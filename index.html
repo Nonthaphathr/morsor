@@ -1,0 +1,1024 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ระบบสำรวจข้อมูลนักเรียน มส. | โรงเรียนกระดุมทองวิทยา</title>
+<link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&family=Prompt:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js"></script>
+<style>
+  :root {
+    --primary: #1a56a8;
+    --primary-dark: #0f3d7a;
+    --primary-light: #3b82f6;
+    --accent: #0ea5e9;
+    --accent-light: #e0f2fe;
+    --bg: #f0f6ff;
+    --surface: #ffffff;
+    --surface2: #f8faff;
+    --border: #c7d9f5;
+    --text: #1e2d4a;
+    --text-muted: #5a7099;
+    --danger: #ef4444;
+    --success: #10b981;
+    --warning: #f59e0b;
+    --shadow: 0 4px 20px rgba(26,86,168,0.10);
+    --shadow-lg: 0 8px 40px rgba(26,86,168,0.16);
+    --radius: 14px;
+    --radius-sm: 8px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Sarabun', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+
+  .header {
+    background: linear-gradient(135deg, var(--primary-dark) 0%, var(--primary) 60%, var(--accent) 100%);
+    padding: 18px 32px; display: flex; align-items: center; gap: 18px;
+    box-shadow: 0 4px 24px rgba(10,30,70,0.22); position: sticky; top: 0; z-index: 100;
+  }
+  .header img { width: 56px; height: 56px; object-fit: contain; border-radius: 50%; background: #fff; padding: 4px; }
+  .header-text h1 { font-family: 'Prompt', sans-serif; font-size: 1.15rem; font-weight: 600; color: #fff; line-height: 1.3; }
+  .header-text p { font-size: 0.82rem; color: rgba(255,255,255,0.78); margin-top: 2px; }
+  .sync-indicator { margin-left: auto; display: flex; align-items: center; gap: 8px; background: rgba(255,255,255,0.12); border-radius: 20px; padding: 6px 14px; font-size: 0.8rem; color: #fff; white-space: nowrap; }
+  .sync-dot { width: 8px; height: 8px; border-radius: 50%; background: #4ade80; flex-shrink: 0; transition: background 0.3s; }
+  .sync-dot.loading { background: #fbbf24; animation: pulse 1s infinite; }
+  .sync-dot.error { background: #f87171; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+  .nav { background: var(--surface); border-bottom: 2px solid var(--border); display: flex; padding: 0 32px; overflow-x: auto; }
+  .nav-btn { padding: 14px 24px; border: none; background: none; font-family: 'Sarabun', sans-serif; font-size: 0.95rem; font-weight: 500; color: var(--text-muted); cursor: pointer; border-bottom: 3px solid transparent; transition: all 0.2s; white-space: nowrap; display: flex; align-items: center; gap: 8px; }
+  .nav-btn:hover { color: var(--primary); background: var(--accent-light); }
+  .nav-btn.active { color: var(--primary); border-bottom-color: var(--primary); font-weight: 600; }
+
+  .main { max-width: 1100px; margin: 0 auto; padding: 28px 20px; }
+  .card { background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow); border: 1px solid var(--border); padding: 24px; margin-bottom: 20px; }
+  .card-title { font-family: 'Prompt', sans-serif; font-size: 1rem; font-weight: 600; color: var(--primary); margin-bottom: 18px; display: flex; align-items: center; gap: 8px; }
+  .card-title::before { content: ''; display: inline-block; width: 4px; height: 18px; background: var(--primary-light); border-radius: 4px; }
+
+  .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; }
+  .form-group { display: flex; flex-direction: column; gap: 5px; }
+  .form-group label { font-size: 0.82rem; font-weight: 600; color: var(--primary-dark); }
+  .form-control { padding: 9px 12px; border: 1.5px solid var(--border); border-radius: var(--radius-sm); font-family: 'Sarabun', sans-serif; font-size: 0.9rem; color: var(--text); background: var(--surface2); transition: border-color 0.2s; width: 100%; }
+  .form-control:focus { outline: none; border-color: var(--primary-light); box-shadow: 0 0 0 3px rgba(59,130,246,0.12); background: #fff; }
+
+  .student-table-wrap { overflow-x: auto; }
+  .student-table { width: 100%; border-collapse: collapse; font-size: 0.88rem; min-width: 600px; }
+  .student-table th { background: linear-gradient(135deg, var(--primary) 0%, var(--primary-light) 100%); color: #fff; padding: 10px; text-align: left; font-weight: 600; font-size: 0.82rem; }
+  .student-table th:first-child { border-radius: 8px 0 0 0; } .student-table th:last-child { border-radius: 0 8px 0 0; }
+  .student-table td { padding: 7px 8px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  .student-table tr:hover td { background: var(--accent-light); }
+  .student-table tr.ms-row td { background: rgba(239,68,68,0.06); }
+  .student-table input { border: 1px solid var(--border); border-radius: 5px; padding: 5px 7px; font-family: 'Sarabun', sans-serif; font-size: 0.87rem; width: 100%; background: #fff; }
+  .student-table input:focus { outline: none; border-color: var(--primary-light); }
+  .pct-badge { display: inline-block; padding: 2px 8px; border-radius: 20px; font-weight: 600; font-size: 0.8rem; }
+  .pct-badge.pass { background: #d1fae5; color: #065f46; }
+  .pct-badge.fail { background: #fee2e2; color: #991b1b; }
+
+  .btn { padding: 9px 20px; border-radius: var(--radius-sm); border: none; cursor: pointer; font-family: 'Sarabun', sans-serif; font-size: 0.9rem; font-weight: 600; transition: all 0.2s; display: inline-flex; align-items: center; gap: 6px; }
+  .btn:disabled { opacity: 0.55; cursor: not-allowed; transform: none !important; }
+  .btn-primary { background: var(--primary); color: #fff; box-shadow: 0 2px 8px rgba(26,86,168,0.25); }
+  .btn-primary:hover:not(:disabled) { background: var(--primary-dark); transform: translateY(-1px); }
+  .btn-accent { background: var(--accent); color: #fff; }
+  .btn-accent:hover:not(:disabled) { background: #0284c7; transform: translateY(-1px); }
+  .btn-danger { background: var(--danger); color: #fff; }
+  .btn-danger:hover:not(:disabled) { background: #dc2626; }
+  .btn-success { background: var(--success); color: #fff; }
+  .btn-success:hover:not(:disabled) { background: #059669; }
+  .btn-outline { background: transparent; color: var(--primary); border: 1.5px solid var(--primary); }
+  .btn-outline:hover:not(:disabled) { background: var(--accent-light); }
+  .btn-sm { padding: 5px 12px; font-size: 0.8rem; }
+  .btn-group { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px; }
+
+  .tab-content { display: none; } .tab-content.active { display: block; }
+  .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 14px; margin-bottom: 20px; }
+  .stat-card { background: var(--surface); border-radius: var(--radius); border: 1px solid var(--border); padding: 18px 16px; text-align: center; box-shadow: var(--shadow); }
+  .stat-card .val { font-family: 'Prompt', sans-serif; font-size: 2rem; font-weight: 700; color: var(--primary); }
+  .stat-card .lbl { font-size: 0.8rem; color: var(--text-muted); margin-top: 4px; }
+  .stat-card.danger .val { color: var(--danger); }
+  .stat-card.warn .val { color: var(--warning); }
+  .stat-card.ok .val { color: var(--success); }
+  .chart-wrap { position: relative; height: 320px; }
+
+  .settings-section { margin-bottom: 24px; }
+  .settings-section h3 { font-family: 'Prompt', sans-serif; font-size: 0.95rem; font-weight: 600; color: var(--primary-dark); margin-bottom: 12px; }
+  .textarea-big { width: 100%; min-height: 100px; border: 1.5px solid var(--border); border-radius: var(--radius-sm); padding: 10px 12px; font-family: 'Sarabun', sans-serif; font-size: 0.9rem; resize: vertical; background: var(--surface2); }
+  .textarea-big:focus { outline: none; border-color: var(--primary-light); }
+  .tag-list { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 8px; }
+  .tag { background: var(--accent-light); color: var(--primary); padding: 4px 12px; border-radius: 20px; font-size: 0.82rem; font-weight: 500; display: flex; align-items: center; gap: 6px; }
+  .tag .del { cursor: pointer; color: var(--danger); font-weight: 700; }
+
+  .toast { position: fixed; bottom: 28px; right: 28px; z-index: 9999; background: var(--primary); color: #fff; padding: 12px 22px; border-radius: var(--radius-sm); box-shadow: var(--shadow-lg); font-size: 0.9rem; font-weight: 500; transform: translateY(80px); opacity: 0; transition: all 0.3s; max-width: 340px; }
+  .toast.show { transform: translateY(0); opacity: 1; }
+  .toast.success { background: var(--success); }
+  .toast.error { background: var(--danger); }
+  .toast.warn { background: var(--warning); color: #1e2d4a; }
+
+  .empty-state { text-align: center; padding: 40px; color: var(--text-muted); }
+  .empty-state .icon { font-size: 3rem; margin-bottom: 10px; }
+
+  .record-card { background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 14px 16px; margin-bottom: 10px; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; justify-content: space-between; }
+  .record-card:hover { border-color: var(--primary-light); box-shadow: 0 2px 10px rgba(26,86,168,0.1); }
+  .record-card.selected { border-color: var(--primary); background: var(--accent-light); }
+  .record-info strong { color: var(--primary); font-size: 0.95rem; }
+  .record-meta { font-size: 0.78rem; color: var(--text-muted); margin-top: 3px; }
+  .flex-between { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; }
+  .section-bar { background: linear-gradient(135deg, var(--primary-dark), var(--primary)); color: #fff; border-radius: var(--radius-sm); padding: 10px 16px; margin-bottom: 14px; font-family: 'Prompt', sans-serif; font-weight: 600; font-size: 0.92rem; }
+  hr.divider { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
+
+  /* LOADING OVERLAY */
+  .loading-overlay { position: fixed; inset: 0; background: rgba(15,61,122,0.5); z-index: 500; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; }
+  .spinner { width: 52px; height: 52px; border: 5px solid rgba(255,255,255,0.3); border-top-color: #fff; border-radius: 50%; animation: spin 0.8s linear infinite; }
+  .loading-msg { color: #fff; font-size: 1rem; font-weight: 500; font-family: 'Sarabun', sans-serif; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  @media (max-width: 600px) {
+    .header { padding: 12px 16px; } .sync-indicator { display: none; }
+    .main { padding: 16px 10px; } .nav { padding: 0 8px; }
+    .nav-btn { padding: 12px 14px; font-size: 0.85rem; }
+  }
+</style>
+</head>
+<body>
+
+<div class="loading-overlay" id="loading-overlay">
+  <div class="spinner"></div>
+  <div class="loading-msg" id="loading-msg">⏳ กำลังโหลดข้อมูลจาก Google Sheets...</div>
+</div>
+
+<div class="header">
+  <img src="https://nonthaphathr.github.io/uploadimg/logoschool.png" alt="Logo" onerror="this.style.display='none'">
+  <div class="header-text">
+    <h1>ระบบสำรวจข้อมูลนักเรียนที่มีเวลาเรียนไม่ถึงร้อยละ 80</h1>
+    <p>ครูยุพา ทองคำ | งานวัดผลและประเมินผล กลุ่มบริหารงานวิชาการ โรงเรียนกระดุมทองวิทยา</p>
+  </div>
+  <div class="sync-indicator" id="sync-indicator">
+    <div class="sync-dot" id="sync-dot"></div>
+    <span id="sync-label">กำลังเชื่อมต่อ...</span>
+  </div>
+</div>
+
+<nav class="nav">
+  <button class="nav-btn active" onclick="switchTab('input')" id="tab-input">📝 กรอกข้อมูล</button>
+  <button class="nav-btn" onclick="switchTab('stats')" id="tab-stats">📊 สรุปสถิติ</button>
+  <button class="nav-btn" onclick="switchTab('print')" id="tab-print">🖨️ สั่งพิมพ์</button>
+  <button class="nav-btn" onclick="switchTab('settings')" id="tab-settings">⚙️ ตั้งค่า</button>
+</nav>
+
+<div class="main">
+
+  <!-- TAB 1 -->
+  <div id="tab-content-input" class="tab-content active">
+    <div class="card">
+      <div class="flex-between card-title" style="margin-bottom:12px;">
+        <span>📋 รายการที่บันทึกแล้ว</span>
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-outline btn-sm" onclick="loadFromSheets()">🔄 โหลดจาก Sheets</button>
+          <button class="btn btn-primary btn-sm" onclick="startNewRecord()">➕ เพิ่มรายการใหม่</button>
+        </div>
+      </div>
+      <div id="record-list"><div class="empty-state"><div class="icon">⏳</div><p>กำลังโหลดข้อมูล...</p></div></div>
+    </div>
+
+    <div class="card" id="form-card">
+      <div class="card-title">✏️ <span id="form-title">กรอกข้อมูลรายวิชา</span></div>
+      <div class="form-grid">
+        <div class="form-group"><label>ครูผู้สอน *</label><select class="form-control" id="f-teacher"><option value="">-- เลือกครู --</option></select></div>
+        <div class="form-group"><label>กลุ่มสาระการเรียนรู้ *</label><select class="form-control" id="f-subject-group"><option value="">-- เลือกกลุ่มสาระ --</option></select></div>
+        <div class="form-group"><label>รหัสวิชา *</label><input type="text" class="form-control" id="f-code" placeholder="เช่น ท31101"></div>
+        <div class="form-group"><label>ชื่อวิชา *</label><input type="text" class="form-control" id="f-name" placeholder="เช่น ภาษาไทย 1"></div>
+        <div class="form-group"><label>ระดับชั้น *</label>
+          <select class="form-control" id="f-level">
+            <option value="">-- เลือกชั้น --</option>
+            <option value="ม.1">ม.1</option>
+            <option value="ม.2">ม.2</option>
+            <option value="ม.3">ม.3</option>
+            <option value="ม.4">ม.4</option>
+            <option value="ม.5">ม.5</option>
+            <option value="ม.6">ม.6</option>
+          </select>
+        </div>
+      </div>
+      <div class="section-bar" style="margin-top:20px;">รายชื่อนักเรียน</div>
+      <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;align-items:center;">
+        <button class="btn btn-outline btn-sm" onclick="addStudentRow()">➕ เพิ่มแถว</button>
+        <button class="btn btn-outline btn-sm" onclick="openPasteModal()">📋 วางข้อมูลหลายแถว</button>
+        <span style="font-size:0.78rem;color:var(--text-muted);">กรอกเฉพาะนักเรียนที่มีเวลาเรียนไม่ถึง 80%</span>
+      </div>
+      <div class="student-table-wrap">
+        <table class="student-table">
+          <thead><tr>
+            <th style="width:40px">#</th>
+            <th style="width:82px">คำนำหน้า</th>
+            <th>ชื่อ-สกุล</th>
+            <th style="width:52px">ลบ</th>
+          </tr></thead>
+          <tbody id="student-tbody"></tbody>
+        </table>
+      </div>
+      <div class="btn-group">
+        <button class="btn btn-primary" id="btn-save" onclick="saveRecord()">💾 บันทึกรายการ</button>
+        <button class="btn btn-outline" onclick="clearForm()">🗑️ ล้างฟอร์ม</button>
+        <button id="btn-update" class="btn btn-accent" onclick="updateRecord()" style="display:none;">✏️ อัปเดตรายการ</button>
+        <button id="btn-delete" class="btn btn-danger" onclick="deleteRecord()" style="display:none;">🗑️ ลบรายการนี้</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- TAB 2 -->
+  <div id="tab-content-stats" class="tab-content">
+    <div class="stats-grid" id="stats-summary"></div>
+    <div class="card"><div class="card-title">📊 กราฟนักเรียน มส. แยกตามรายวิชา</div><div class="chart-wrap"><canvas id="chart-subject"></canvas></div></div>
+    <div class="card"><div class="card-title">📊 กราฟนักเรียน มส. แยกตามกลุ่มสาระ</div><div class="chart-wrap"><canvas id="chart-group"></canvas></div></div>
+    <div class="card"><div class="card-title">📊 กราฟนักเรียน มส. แยกตามระดับชั้น</div><div class="chart-wrap"><canvas id="chart-level"></canvas></div></div>
+  </div>
+
+  <!-- TAB 3 -->
+  <div id="tab-content-print" class="tab-content">
+    <div class="card">
+      <div class="flex-between" style="margin-bottom:16px;">
+        <div class="card-title" style="margin-bottom:0">🖨️ เอกสารสรุปข้อมูล มส.</div>
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-primary" onclick="printDoc()">🖨️ พิมพ์เอกสาร</button>
+          <button class="btn btn-outline" onclick="generatePrintPreview()">🔄 รีเฟรช</button>
+        </div>
+      </div>
+      <div id="print-preview-area" style="border:1px solid var(--border);border-radius:var(--radius-sm);padding:20px;background:#fff;min-height:400px;"></div>
+    </div>
+  </div>
+
+  <!-- TAB 4 -->
+  <div id="tab-content-settings" class="tab-content">
+    <div class="card">
+      <div class="card-title">⚙️ ตั้งค่าระบบ</div>
+      <div class="settings-section">
+        <h3>📅 ปีการศึกษา</h3>
+        <input type="text" class="form-control" id="s-year" placeholder="เช่น 2568" style="max-width:200px;">
+        <button class="btn btn-primary btn-sm" style="margin-top:8px;" onclick="saveYear()">บันทึก</button>
+      </div>
+      <hr class="divider">
+      <div class="settings-section">
+        <h3>👥 จำนวนนักเรียนทั้งหมดในโรงเรียน</h3>
+        <p style="font-size:0.8rem;color:var(--text-muted);margin-bottom:8px;">ใช้คำนวณร้อยละนักเรียน มส. จากนักเรียนทั้งโรงเรียน</p>
+        <input type="number" class="form-control" id="s-total-students" placeholder="เช่น 480" min="1" style="max-width:200px;">
+        <button class="btn btn-primary btn-sm" style="margin-top:8px;" onclick="saveTotalStudents()">บันทึก</button>
+        <div id="total-students-display" style="margin-top:8px;font-size:0.82rem;color:var(--text-muted);"></div>
+      </div>
+      <hr class="divider">
+      <div class="settings-section">
+        <h3>👨‍🏫 รายชื่อครู</h3>
+        <p style="font-size:0.8rem;color:var(--text-muted);margin-bottom:8px;">วางรายชื่อครูได้ทีละหลายคน (1 บรรทัด = 1 คน)</p>
+        <textarea class="textarea-big" id="s-teachers-input" placeholder="ยุพา ทองคำ&#10;สมชาย ใจดี&#10;สมหญิง รักดี"></textarea>
+        <button class="btn btn-primary btn-sm" style="margin-top:8px;" onclick="addTeachers()">➕ เพิ่มครู</button>
+        <div class="tag-list" id="teacher-tags"></div>
+      </div>
+      <hr class="divider">
+      <div class="settings-section">
+        <h3>📚 กลุ่มสาระการเรียนรู้</h3>
+        <textarea class="textarea-big" id="s-groups-input" placeholder="ภาษาไทย&#10;คณิตศาสตร์&#10;วิทยาศาสตร์และเทคโนโลยี"></textarea>
+        <button class="btn btn-primary btn-sm" style="margin-top:8px;" onclick="addGroups()">➕ เพิ่มกลุ่มสาระ</button>
+        <div class="tag-list" id="group-tags"></div>
+      </div>
+      <hr class="divider">
+      <div class="settings-section">
+        <h3>📤 Export ข้อมูล</h3>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;">
+          <button class="btn btn-success" onclick="exportExcel()">📊 Export Excel</button>
+          <button class="btn btn-outline" onclick="exportJSON()">📄 Backup JSON</button>
+          <button class="btn btn-outline" onclick="importJSON()">📥 นำเข้า JSON</button>
+          <input type="file" id="import-file" accept=".json" style="display:none" onchange="handleImport(this)">
+        </div>
+      </div>
+      <hr class="divider">
+      <div class="settings-section">
+        <h3>🔧 GAS Endpoint URL</h3>
+        <p style="font-size:0.8rem;color:var(--text-muted);margin-bottom:8px;">หลัง Deploy GAS ใหม่ ให้วาง URL ใหม่ที่นี่</p>
+        <input type="text" class="form-control" id="s-gas-url" style="font-size:0.78rem;font-family:monospace;" placeholder="https://script.google.com/macros/s/...">
+        <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;">
+          <button class="btn btn-primary btn-sm" onclick="saveGasUrl()">💾 บันทึก URL</button>
+          <button class="btn btn-outline btn-sm" onclick="testConnection()">🔌 ทดสอบการเชื่อมต่อ</button>
+        </div>
+        <div id="connection-status" style="margin-top:8px;font-size:0.82rem;"></div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<!-- PASTE MODAL -->
+<div id="paste-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:200;align-items:center;justify-content:center;">
+  <div style="background:#fff;border-radius:var(--radius);padding:28px;max-width:560px;width:90%;box-shadow:var(--shadow-lg);">
+    <div style="font-family:'Prompt',sans-serif;font-weight:600;color:var(--primary);margin-bottom:10px;font-size:1rem;">📋 วางข้อมูลนักเรียนหลายคน</div>
+    <p style="font-size:0.82rem;color:var(--text-muted);margin-bottom:10px;">รูปแบบ: <strong>คำนำหน้า [Tab] ชื่อ-สกุล [Tab] มาเรียน [Tab] รวม</strong> แต่ละคน = 1 บรรทัด<br>📌 Copy จาก Excel ได้โดยตรง</p>
+    <textarea class="textarea-big" id="paste-input" style="min-height:160px;" placeholder="เด็กชาย	สมชาย ใจดี	40	50&#10;เด็กหญิง	สมใจ รักดี	45	50"></textarea>
+    <div style="display:flex;gap:8px;margin-top:12px;justify-content:flex-end;">
+      <button class="btn btn-outline" onclick="closePasteModal()">ยกเลิก</button>
+      <button class="btn btn-primary" onclick="processPaste()">✅ นำเข้า</button>
+    </div>
+  </div>
+</div>
+
+<!-- SETTINGS PIN MODAL -->
+<div id="settings-pin-modal" style="display:none;position:fixed;inset:0;background:rgba(15,61,122,0.55);z-index:9000;align-items:center;justify-content:center;">
+  <div style="background:#fff;border-radius:var(--radius);padding:40px 36px;max-width:340px;width:90%;box-shadow:var(--shadow-lg);text-align:center;">
+    <div style="font-size:2.8rem;margin-bottom:10px;">🔒</div>
+    <div style="font-family:'Prompt',sans-serif;font-weight:700;color:var(--primary);font-size:1.15rem;margin-bottom:6px;">ตั้งค่าระบบ</div>
+    <div style="font-size:0.85rem;color:var(--text-muted);margin-bottom:22px;">กรุณากรอกรหัสผ่าน 4 หลัก</div>
+    <input type="password" id="settings-pin-input" maxlength="4" inputmode="numeric" pattern="[0-9]*"
+      style="width:150px;font-size:2rem;letter-spacing:14px;text-align:center;padding:10px 8px;border:2px solid var(--border);border-radius:var(--radius-sm);font-family:'Prompt',sans-serif;display:block;margin:0 auto 8px;"
+      placeholder="••••" oninput="checkSettingsPin()" onkeydown="if(event.key==='Enter')checkSettingsPin()">
+    <div id="settings-pin-error" style="color:var(--danger);font-size:0.83rem;min-height:20px;margin-bottom:16px;"></div>
+    <button class="btn btn-outline btn-sm" onclick="closeSettingsModal()">ยกเลิก</button>
+  </div>
+</div>
+
+<script>
+// ============================================================
+// CONFIG & STATE
+// ============================================================
+const DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbzYKUBve0yPh3gQ95mpnNOi4mrZ1YCdw2SC40SrsOkBCf5Co5D5OcV6I8YGhCo7bk-u/exec';
+
+let state = {
+  records: [],     // loaded from Sheets
+  teachers: [],    // from localStorage
+  groups: [],      // from localStorage
+  year: '2568',
+  gasUrl: DEFAULT_GAS_URL,
+  editingId: null
+};
+let chartSubject = null, chartGroup = null, chartLevel = null;
+let rowId = 0;
+
+// ============================================================
+// INIT
+// ============================================================
+function init() {
+  const saved = localStorage.getItem('ms-settings');
+  if (saved) {
+    try {
+      const s = JSON.parse(saved);
+      state.teachers = s.teachers || [];
+      state.groups   = s.groups   || [];
+      state.year     = s.year     || '2568';
+      state.gasUrl   = s.gasUrl   || DEFAULT_GAS_URL;
+    } catch(e) {}
+  }
+  if (!state.groups.length) {
+    state.groups = ['ภาษาไทย','คณิตศาสตร์','วิทยาศาสตร์และเทคโนโลยี','สังคมศึกษา ศาสนา และวัฒนธรรม','สุขศึกษาและพลศึกษา','ศิลปะ','การงานอาชีพ','ภาษาต่างประเทศ'];
+  }
+  document.getElementById('s-year').value    = state.year;
+  document.getElementById('s-gas-url').value = state.gasUrl;
+  renderTeacherDropdowns();
+  renderGroupDropdowns();
+  renderTeacherTags();
+  renderGroupTags();
+  initStudentRows(3);
+  state.totalStudents = parseInt(localStorage.getItem('ms-total-students') || '0') || 0;
+  document.getElementById('s-total-students').value = state.totalStudents || '';
+  updateTotalStudentsDisplay();
+  loadFromSheets();
+}
+
+function saveSettings() {
+  localStorage.setItem('ms-settings', JSON.stringify({
+    teachers: state.teachers, groups: state.groups, year: state.year, gasUrl: state.gasUrl
+  }));
+}
+
+function saveTotalStudents() {
+  const val = parseInt(document.getElementById('s-total-students').value) || 0;
+  state.totalStudents = val;
+  localStorage.setItem('ms-total-students', val);
+  updateTotalStudentsDisplay();
+  showToast(`บันทึก: นักเรียนทั้งโรงเรียน ${val} คน ✅`, 'success');
+}
+
+function updateTotalStudentsDisplay() {
+  const el = document.getElementById('total-students-display');
+  if (el) el.textContent = state.totalStudents ? `ปัจจุบัน: ${state.totalStudents} คน` : '';
+}
+
+// ============================================================
+// GAS API — ใช้ JSONP (GET) เพื่อหลีกเลี่ยง CORS
+// ============================================================
+function gasUrl() { return state.gasUrl || DEFAULT_GAS_URL; }
+
+// JSONP: inject <script> tag แล้วรอ callback
+function gasJsonp(params = {}) {
+  return new Promise((resolve, reject) => {
+    const cbName = 'gasCallback_' + Date.now() + '_' + Math.floor(Math.random()*9999);
+    const timeout = setTimeout(() => {
+      delete window[cbName];
+      script.remove();
+      reject(new Error('Timeout: GAS ไม่ตอบสนองใน 30 วินาที'));
+    }, 30000);
+
+    window[cbName] = (data) => {
+      clearTimeout(timeout);
+      delete window[cbName];
+      script.remove();
+      resolve(data);
+    };
+
+    const url = new URL(gasUrl());
+    url.searchParams.set('callback', cbName);
+    Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
+
+    const script = document.createElement('script');
+    script.src = url.toString();
+    script.onerror = () => {
+      clearTimeout(timeout);
+      delete window[cbName];
+      reject(new Error('โหลด GAS script ล้มเหลว — ตรวจสอบ URL หรือ Deploy ใหม่'));
+    };
+    document.head.appendChild(script);
+  });
+}
+
+// GET ธรรมดา (ใช้กับ getAll, ping)
+async function gasGet(params = {}) {
+  return gasJsonp(params);
+}
+
+// POST → แปลงเป็น GET + encode payload
+async function gasPost(body) {
+  const params = { action: body.action };
+  if (body.record)   params.record   = encodeURIComponent(JSON.stringify(body.record));
+  if (body.recordId) params.recordId = encodeURIComponent(String(body.recordId));
+  return gasJsonp(params);
+}
+
+// ============================================================
+// LOAD FROM SHEETS
+// ============================================================
+async function loadFromSheets() {
+  setSyncState('loading', 'กำลังโหลด...');
+  showLoading('⏳ กำลังโหลดข้อมูลจาก Google Sheets...');
+  try {
+    const data = await gasGet({ action: 'getAll' });
+    if (data.ok) {
+      state.records = data.records || [];
+      localStorage.setItem('ms-records-cache', JSON.stringify(state.records));
+      renderRecordList();
+      setSyncState('ok', `โหลดแล้ว (${state.records.length} รายวิชา)`);
+      showToast(`โหลดข้อมูลสำเร็จ — ${state.records.length} รายวิชา`, 'success');
+    } else {
+      throw new Error(data.error || 'GAS returned error');
+    }
+  } catch(err) {
+    setSyncState('error', 'เชื่อมต่อไม่ได้');
+    showToast('โหลดจาก Sheets ไม่สำเร็จ: ' + err.message, 'error');
+    // fallback cache
+    const cache = localStorage.getItem('ms-records-cache');
+    if (cache) {
+      state.records = JSON.parse(cache);
+      renderRecordList();
+      showToast('แสดงข้อมูล cache แทน (อาจไม่ใช่ล่าสุด)', 'warn');
+    } else {
+      renderRecordList();
+    }
+  } finally {
+    hideLoading();
+  }
+}
+
+// ============================================================
+// SAVE (CREATE)
+// ============================================================
+async function saveRecord() {
+  const data = getFormData();
+  if (!validateForm(data)) return;
+
+  const record = { id: 'rec_' + Date.now() + '_' + Math.random().toString(36).slice(2,6), year: state.year, ...data };
+  setFormBusy(true);
+  setSyncState('loading', 'กำลังบันทึก...');
+
+  try {
+    const res = await gasPost({ action: 'saveRecord', record });
+    if (!res.ok) throw new Error(res.error || 'Save failed');
+    state.records.push(record);
+    localStorage.setItem('ms-records-cache', JSON.stringify(state.records));
+    renderRecordList();
+    clearForm();
+    setSyncState('ok', 'บันทึกแล้ว');
+    showToast('บันทึกลง Google Sheets สำเร็จ! 🎉', 'success');
+  } catch(err) {
+    setSyncState('error', 'บันทึกล้มเหลว');
+    showToast('บันทึกไม่สำเร็จ: ' + err.message, 'error');
+  } finally {
+    setFormBusy(false);
+  }
+}
+
+// ============================================================
+// UPDATE (EDIT)
+// ============================================================
+async function updateRecord() {
+  const data = getFormData();
+  if (!validateForm(data)) return;
+
+  const record = { id: state.editingId, year: state.year, ...data };
+  setFormBusy(true);
+  setSyncState('loading', 'กำลังอัปเดต...');
+
+  try {
+    const res = await gasPost({ action: 'updateRecord', record });
+    if (!res.ok) throw new Error(res.error || 'Update failed');
+    const idx = state.records.findIndex(r => r.id === state.editingId);
+    if (idx !== -1) state.records[idx] = record;
+    localStorage.setItem('ms-records-cache', JSON.stringify(state.records));
+    renderRecordList();
+    clearForm();
+    startNewRecord();
+    setSyncState('ok', 'อัปเดตแล้ว');
+    showToast('อัปเดต Google Sheets สำเร็จ! ✅', 'success');
+  } catch(err) {
+    setSyncState('error', 'อัปเดตล้มเหลว');
+    showToast('อัปเดตไม่สำเร็จ: ' + err.message, 'error');
+  } finally {
+    setFormBusy(false);
+  }
+}
+
+// ============================================================
+// DELETE
+// ============================================================
+async function deleteRecord() {
+  if (!confirm('⚠️ ต้องการลบรายการนี้ออกจาก Google Sheets?\nการลบไม่สามารถย้อนกลับได้!')) return;
+  const recordId = state.editingId;
+  setFormBusy(true);
+  setSyncState('loading', 'กำลังลบ...');
+
+  try {
+    const res = await gasPost({ action: 'deleteRecord', recordId });
+    if (!res.ok) throw new Error(res.error || 'Delete failed');
+    state.records = state.records.filter(r => r.id !== recordId);
+    localStorage.setItem('ms-records-cache', JSON.stringify(state.records));
+    renderRecordList();
+    clearForm();
+    startNewRecord();
+    setSyncState('ok', 'ลบแล้ว');
+    showToast('ลบข้อมูลออกจาก Google Sheets แล้ว 🗑️', 'success');
+  } catch(err) {
+    setSyncState('error', 'ลบล้มเหลว');
+    showToast('ลบไม่สำเร็จ: ' + err.message, 'error');
+  } finally {
+    setFormBusy(false);
+  }
+}
+
+// ============================================================
+// TEST CONNECTION
+// ============================================================
+async function testConnection() {
+  const el = document.getElementById('connection-status');
+  el.innerHTML = '⏳ กำลังทดสอบ...';
+  try {
+    const res = await gasGet({ action: 'ping' });
+    if (res.ok) {
+      el.innerHTML = `<span style="color:var(--success)">✅ เชื่อมต่อสำเร็จ! เวลาเซิร์ฟเวอร์: ${res.time}</span>`;
+      showToast('เชื่อมต่อ GAS สำเร็จ!', 'success');
+    } else throw new Error(res.error);
+  } catch(err) {
+    el.innerHTML = `<span style="color:var(--danger)">❌ ไม่สามารถเชื่อมต่อได้: ${err.message}</span>`;
+    showToast('เชื่อมต่อล้มเหลว', 'error');
+  }
+}
+
+// ============================================================
+// FORM
+// ============================================================
+function getFormData() {
+  const rows = document.querySelectorAll('#student-tbody tr');
+  const students = [];
+  rows.forEach(r => {
+    const id = r.id.replace('row-', '');
+    const prefix   = document.getElementById('pre-' + id)?.value || '';
+    const fullname = (document.getElementById('name-' + id)?.value || '').trim();
+    // ครูส่งเฉพาะรายชื่อนักเรียน มส. — ไม่ต้องกรอกชั่วโมง
+    if (fullname) students.push({ prefix, fullname, attended: 0, total: 0 });
+  });
+  return {
+    teacher: document.getElementById('f-teacher').value,
+    group:   document.getElementById('f-subject-group').value,
+    code:    document.getElementById('f-code').value.trim(),
+    name:    document.getElementById('f-name').value.trim(),   // maps → F: ชื่อวิชา
+    level:   document.getElementById('f-level').value,
+    students
+  };
+}
+// Alias for GAS compatibility — GAS uses 'name' as ชื่อวิชา, matches col F
+
+function validateForm(data) {
+  if (!data.teacher)  { showToast('กรุณาเลือกครูผู้สอน', 'error'); return false; }
+  if (!data.group)    { showToast('กรุณาเลือกกลุ่มสาระ', 'error'); return false; }
+  if (!data.code)     { showToast('กรุณากรอกรหัสวิชา', 'error'); return false; }
+  if (!data.name)     { showToast('กรุณากรอกชื่อวิชา', 'error'); return false; }
+  if (!data.level)    { showToast('กรุณาเลือกระดับชั้น', 'error'); return false; }
+  if (!data.students.length) { showToast('กรุณากรอกข้อมูลนักเรียนอย่างน้อย 1 คน', 'error'); return false; }
+  return true;
+}
+
+function setFormBusy(busy) {
+  ['btn-save','btn-update','btn-delete'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.disabled = busy;
+  });
+}
+
+function startNewRecord() {
+  state.editingId = null;
+  document.getElementById('form-title').textContent = 'กรอกข้อมูลรายวิชาใหม่';
+  document.getElementById('btn-save').style.display   = '';
+  document.getElementById('btn-update').style.display = 'none';
+  document.getElementById('btn-delete').style.display = 'none';
+  document.querySelectorAll('.record-card').forEach(c => c.classList.remove('selected'));
+}
+
+function clearForm() {
+  ['f-teacher','f-subject-group','f-code','f-name','f-level'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+  document.getElementById('student-tbody').innerHTML = '';
+  rowId = 0;
+  initStudentRows(3);
+}
+
+// ============================================================
+// RECORD LIST
+// ============================================================
+function renderRecordList() {
+  const wrap = document.getElementById('record-list');
+  if (!state.records.length) {
+    wrap.innerHTML = '<div class="empty-state"><div class="icon">📂</div><p>ยังไม่มีรายการ กด "เพิ่มรายการใหม่" เพื่อเริ่มต้น</p></div>';
+    return;
+  }
+  wrap.innerHTML = state.records.map(r => {
+    const msCount = r.students.filter(s => s.total > 0 && (s.attended/s.total*100) < 80).length;
+    return `<div class="record-card" data-id="${r.id}" onclick="editRecord('${r.id}')">
+      <div class="record-info">
+        <strong>${r.code} ${r.name || r.subjectName || ''}</strong>
+        <div class="record-meta">🏫 ${r.level} | 👨‍🏫 ${r.teacher} | 📚 ${r.group}</div>
+      </div>
+      <span style="background:#fee2e2;color:#991b1b;padding:3px 10px;border-radius:20px;font-size:0.8rem;font-weight:600;white-space:nowrap;">มส. ${msCount}/${r.students.length}</span>
+    </div>`;
+  }).join('');
+}
+
+function editRecord(id) {
+  const rec = state.records.find(r => r.id === id);
+  if (!rec) return;
+  state.editingId = id;
+  document.getElementById('f-teacher').value       = rec.teacher      || '';
+  document.getElementById('f-subject-group').value = rec.group        || '';
+  document.getElementById('f-code').value          = rec.code         || '';
+  document.getElementById('f-name').value          = rec.name || rec.subjectName || '';
+  document.getElementById('f-level').value         = rec.level        || '';
+  const _subLabel = rec.name || rec.subjectName || ''; document.getElementById('form-title').textContent = `แก้ไข: ${rec.code} ${_subLabel}`;
+  document.getElementById('btn-save').style.display   = 'none';
+  document.getElementById('btn-update').style.display = '';
+  document.getElementById('btn-delete').style.display = '';
+  document.getElementById('student-tbody').innerHTML = '';
+  rowId = 0;
+  rec.students.forEach(s => addStudentRow(s.prefix, s.fullname, s.attended, s.total));
+  document.getElementById('form-card').scrollIntoView({ behavior: 'smooth' });
+  document.querySelectorAll('.record-card').forEach(c => c.classList.remove('selected'));
+  document.querySelector(`.record-card[data-id="${id}"]`)?.classList.add('selected');
+}
+
+// ============================================================
+// STUDENT ROWS
+// ============================================================
+function initStudentRows(n = 3) { for (let i = 0; i < n; i++) addStudentRow(); }
+
+function addStudentRow(prefix = '', fullname = '', attended = '', total = '') {
+  const tbody = document.getElementById('student-tbody');
+  const id = rowId++;
+  const tr = document.createElement('tr');
+  tr.id = 'row-' + id;
+  tr.innerHTML = `
+    <td style="color:var(--text-muted);font-size:0.8rem;text-align:center;">${tbody.rows.length + 1}</td>
+    <td><select id="pre-${id}" style="min-width:76px;border:1px solid var(--border);border-radius:5px;padding:5px 4px;font-family:'Sarabun',sans-serif;font-size:0.87rem;background:#fff;">
+      <option value="เด็กชาย" ${prefix==='เด็กชาย'?'selected':''}>เด็กชาย</option>
+      <option value="เด็กหญิง" ${prefix==='เด็กหญิง'?'selected':''}>เด็กหญิง</option>
+      <option value="นาย" ${prefix==='นาย'?'selected':''}>นาย</option>
+      <option value="นางสาว" ${prefix==='นางสาว'?'selected':''}>นางสาว</option>
+    </select></td>
+    <td><input type="text" id="name-${id}" value="${fullname}" placeholder="ชื่อ-นามสกุล"></td>
+    <td><button class="btn btn-danger btn-sm" onclick="removeRow(${id})">✕</button></td>`;
+  tbody.appendChild(tr);
+  renumberRows();
+}
+
+function calcPct(id) {
+  const att = parseFloat(document.getElementById('att-'+id)?.value) || 0;
+  const tot = parseFloat(document.getElementById('tot-'+id)?.value) || 0;
+  const badge = document.getElementById('pct-'+id);
+  if (!badge) return;
+  if (tot === 0) { badge.textContent = '-'; badge.className = 'pct-badge'; return; }
+  const pct = att/tot*100;
+  badge.textContent = pct.toFixed(1) + '%';
+  badge.className = pct >= 80 ? 'pct-badge pass' : 'pct-badge fail';
+  const row = document.getElementById('row-'+id);
+  if (row) row.className = pct < 80 ? 'ms-row' : '';
+}
+
+function removeRow(id) { document.getElementById('row-'+id)?.remove(); renumberRows(); }
+
+function renumberRows() {
+  document.querySelectorAll('#student-tbody tr').forEach((r, i) => { if (r.cells[0]) r.cells[0].textContent = i + 1; });
+}
+
+// ============================================================
+// PASTE MODAL
+// ============================================================
+function openPasteModal() {
+  document.getElementById('paste-modal').style.display = 'flex';
+  document.getElementById('paste-input').value = '';
+  setTimeout(() => document.getElementById('paste-input').focus(), 80);
+}
+function closePasteModal() { document.getElementById('paste-modal').style.display = 'none'; }
+function processPaste() {
+  const raw = document.getElementById('paste-input').value.trim();
+  closePasteModal();
+  if (!raw) return;
+  let count = 0;
+  raw.split('\n').forEach(line => {
+    if (!line.trim()) return;
+    const parts = line.split(/\t|\|/).map(s => s.trim());
+    if (parts.length >= 2) addStudentRow(parts[0], parts[1]);
+    else                    addStudentRow('', parts[0]);
+    count++;
+  });
+  showToast(`นำเข้า ${count} แถวแล้ว ✅`, 'success');
+}
+
+// ============================================================
+// DROPDOWNS & SETTINGS
+// ============================================================
+function renderTeacherDropdowns() {
+  const sel = document.getElementById('f-teacher'), val = sel.value;
+  sel.innerHTML = '<option value="">-- เลือกครู --</option>';
+  state.teachers.forEach(t => sel.innerHTML += `<option value="${t}">${t}</option>`);
+  if (val) sel.value = val;
+}
+function renderGroupDropdowns() {
+  const sel = document.getElementById('f-subject-group'), val = sel.value;
+  sel.innerHTML = '<option value="">-- เลือกกลุ่มสาระ --</option>';
+  state.groups.forEach(g => sel.innerHTML += `<option value="${g}">${g}</option>`);
+  if (val) sel.value = val;
+}
+function renderTeacherTags() {
+  document.getElementById('teacher-tags').innerHTML = state.teachers.map((t,i) =>
+    `<div class="tag">${t} <span class="del" onclick="removeTeacher(${i})">✕</span></div>`).join('');
+}
+function renderGroupTags() {
+  document.getElementById('group-tags').innerHTML = state.groups.map((g,i) =>
+    `<div class="tag">${g} <span class="del" onclick="removeGroup(${i})">✕</span></div>`).join('');
+}
+function saveYear() { state.year = document.getElementById('s-year').value.trim() || '2568'; saveSettings(); showToast('บันทึกปีการศึกษาแล้ว', 'success'); }
+function saveGasUrl() { state.gasUrl = document.getElementById('s-gas-url').value.trim() || DEFAULT_GAS_URL; saveSettings(); showToast('บันทึก URL แล้ว', 'success'); }
+function addTeachers() {
+  const raw = document.getElementById('s-teachers-input').value.trim(); if (!raw) return;
+  raw.split('\n').forEach(t => { t = t.trim(); if (t && !state.teachers.includes(t)) state.teachers.push(t); });
+  document.getElementById('s-teachers-input').value = '';
+  saveSettings(); renderTeacherTags(); renderTeacherDropdowns(); showToast('เพิ่มครูแล้ว ✅', 'success');
+}
+function removeTeacher(i) { state.teachers.splice(i,1); saveSettings(); renderTeacherTags(); renderTeacherDropdowns(); }
+function addGroups() {
+  const raw = document.getElementById('s-groups-input').value.trim(); if (!raw) return;
+  raw.split('\n').forEach(g => { g = g.trim(); if (g && !state.groups.includes(g)) state.groups.push(g); });
+  document.getElementById('s-groups-input').value = '';
+  saveSettings(); renderGroupTags(); renderGroupDropdowns(); showToast('เพิ่มกลุ่มสาระแล้ว ✅', 'success');
+}
+function removeGroup(i) { state.groups.splice(i,1); saveSettings(); renderGroupTags(); renderGroupDropdowns(); }
+
+// ============================================================
+// TAB NAVIGATION
+// ============================================================
+function switchTab(tab) {
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-content-' + tab).classList.add('active');
+  document.getElementById('tab-' + tab).classList.add('active');
+  if (tab === 'stats') renderStats();
+  if (tab === 'print') generatePrintPreview();
+  if (tab === 'settings') showSettingsLock();
+  else settingsUnlocked = false;
+}
+
+// ── SETTINGS PASSWORD LOCK ──
+const SETTINGS_PIN = '1111';
+let settingsUnlocked = false;
+
+function showSettingsLock() {
+  if (settingsUnlocked) return;
+  const modal = document.getElementById('settings-pin-modal');
+  modal.style.display = 'flex';
+  document.getElementById('settings-pin-input').value = '';
+  document.getElementById('settings-pin-error').textContent = '';
+  setTimeout(() => document.getElementById('settings-pin-input').focus(), 80);
+}
+
+function closeSettingsModal() {
+  document.getElementById('settings-pin-modal').style.display = 'none';
+  // Go back to input tab if cancelled
+  switchTabSilent('input');
+}
+
+function switchTabSilent(tab) {
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-content-' + tab).classList.add('active');
+  document.getElementById('tab-' + tab).classList.add('active');
+}
+
+function checkSettingsPin() {
+  const input = document.getElementById('settings-pin-input').value;
+  if (input.length < 4) return;
+  if (input === SETTINGS_PIN) {
+    settingsUnlocked = true;
+    document.getElementById('settings-pin-modal').style.display = 'none';
+    showToast('เข้าสู่การตั้งค่าแล้ว 🔓', 'success');
+  } else {
+    document.getElementById('settings-pin-error').textContent = '❌ รหัสไม่ถูกต้อง';
+    document.getElementById('settings-pin-input').value = '';
+    setTimeout(() => document.getElementById('settings-pin-error').textContent = '', 2000);
+  }
+}
+
+// Reset lock when leaving settings tab (handled in switchTab)
+
+// ============================================================
+// STATS
+// ============================================================
+function getMSStudents() {
+  // ครูส่งเฉพาะรายชื่อนักเรียน มส. ทุกคนในรายการ = มส.
+  const all = [];
+  state.records.forEach(r => r.students.forEach(s => {
+    all.push({ ...s, code: r.code, subjectName: r.name || r.subjectName || '', group: r.group, level: r.level });
+  }));
+  return all;
+}
+
+function renderStats() {
+  const ms = getMSStudents();
+  const schoolTotal = state.totalStudents || 0;
+  const msCount = ms.length;
+  const pctMs = schoolTotal > 0 ? (msCount / schoolTotal * 100).toFixed(1) : '-';
+  document.getElementById('stats-summary').innerHTML = `
+    <div class="stat-card"><div class="val">${state.records.length}</div><div class="lbl">รายวิชาทั้งหมด</div></div>
+    <div class="stat-card"><div class="val">${schoolTotal || '-'}</div><div class="lbl">นักเรียนทั้งโรงเรียน</div></div>
+    <div class="stat-card danger"><div class="val">${msCount}</div><div class="lbl">นักเรียนที่ติด มส.</div></div>
+    <div class="stat-card warn"><div class="val">${pctMs}%</div><div class="lbl">ร้อยละ มส. (จากทั้งโรงเรียน)</div></div>
+    <div class="stat-card ok"><div class="val">${schoolTotal ? schoolTotal - msCount : '-'}</div><div class="lbl">ไม่ติด มส.</div></div>`;
+  const subjectMap = {}, groupMap = {}, levelMap = {};
+  ms.forEach(s => {
+    const k = s.code + ' ' + s.subjectName;
+    subjectMap[k] = (subjectMap[k]||0) + 1;
+    groupMap[s.group] = (groupMap[s.group]||0) + 1;
+    levelMap[s.level] = (levelMap[s.level]||0) + 1;
+  });
+  if (chartSubject) chartSubject.destroy();
+  if (chartGroup)   chartGroup.destroy();
+  if (chartLevel)   chartLevel.destroy();
+  chartSubject = buildChart('chart-subject', subjectMap);
+  chartGroup   = buildChart('chart-group',   groupMap);
+  chartLevel   = buildChart('chart-level',   levelMap);
+}
+
+function buildChart(canvasId, dataMap) {
+  const ctx = document.getElementById(canvasId); if (!ctx) return null;
+  const labels = Object.keys(dataMap), data = Object.values(dataMap);
+  return new Chart(ctx, {
+    type: 'bar',
+    data: { labels, datasets: [{ data, backgroundColor: labels.map((_,i)=>`hsla(${210+i*22},75%,55%,0.8)`), borderColor: labels.map((_,i)=>`hsla(${210+i*22},75%,42%,1)`), borderWidth: 1.5, borderRadius: 6 }] },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { font: { family: 'Sarabun' } }, grid: { color: '#e2eaf5' } }, x: { ticks: { font: { family: 'Sarabun', size: 11 } }, grid: { display: false } } } }
+  });
+}
+
+// ============================================================
+// PRINT
+// ============================================================
+function generatePrintPreview() {
+  const ms = getMSStudents();
+  const allStudents = state.records.reduce((a,r) => a + r.students.length, 0);
+  let html = `<div style="font-family:'Sarabun',sans-serif;color:#1e2d4a;max-width:900px;margin:0 auto;">
+    <div style="text-align:center;margin-bottom:24px;padding-bottom:16px;border-bottom:2px solid #1a56a8;">
+      <img src="https://nonthaphathr.github.io/uploadimg/logoschool.png" style="height:70px;margin-bottom:8px;" onerror="this.style.display='none'">
+      <h2 style="font-size:1.2rem;color:#1a56a8;margin:0;">รายงานสรุปข้อมูลนักเรียนที่มีเวลาเรียนไม่ถึงร้อยละ 80</h2>
+      <p style="font-size:0.88rem;color:#5a7099;margin-top:4px;">ปีการศึกษา ${state.year} | โรงเรียนกระดุมทองวิทยา | ${new Date().toLocaleDateString('th-TH',{year:'numeric',month:'long',day:'numeric'})}</p>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px;">
+      ${[['รายวิชาทั้งหมด',state.records.length,'#1a56a8'],['นักเรียนทั้งโรงเรียน',schoolTotal||'-','#0f3d7a'],['นักเรียน มส.',ms.length,'#ef4444'],['ร้อยละ มส.',pctMs+'%','#f59e0b']]
+        .map(([l,v,c])=>`<div style="background:#f0f6ff;border:1px solid #c7d9f5;border-radius:10px;padding:14px;text-align:center;"><div style="font-size:1.8rem;font-weight:700;color:${c};">${v}</div><div style="font-size:0.8rem;color:#5a7099;">${l}</div></div>`).join('')}
+    </div>`;
+  state.records.forEach(r => {
+    if (!r.students.length) return;
+    html += `<div style="margin-bottom:20px;border:1px solid #c7d9f5;border-radius:10px;overflow:hidden;">
+      <div style="background:linear-gradient(135deg,#0f3d7a,#1a56a8);color:#fff;padding:10px 16px;">
+        <strong>${r.code} ${r.name || r.subjectName || ''}</strong>
+        <span style="margin-left:12px;font-size:0.82rem;opacity:0.85;">${r.level} | ${r.teacher} | ${r.group}</span>
+        <span style="float:right;background:#ef4444;padding:2px 10px;border-radius:12px;font-size:0.82rem;">มส. ${r.students.length} คน</span>
+      </div>
+      <table style="width:100%;border-collapse:collapse;font-size:0.85rem;">
+        <thead><tr style="background:#e0f2fe;">
+          <th style="padding:7px 10px;border-bottom:1px solid #c7d9f5;text-align:center;width:40px">#</th>
+          <th style="padding:7px 10px;border-bottom:1px solid #c7d9f5;">ชื่อ-สกุล</th>
+          <th style="padding:7px 10px;border-bottom:1px solid #c7d9f5;text-align:center;width:80px">สถานะ</th>
+        </tr></thead>
+        <tbody>${r.students.map((s,i)=>`<tr style="background:${i%2===0?'#fff':'#f8faff'}">
+          <td style="padding:7px 10px;border-bottom:1px solid #f0f6ff;text-align:center;">${i+1}</td>
+          <td style="padding:7px 10px;border-bottom:1px solid #f0f6ff;">${s.prefix} ${s.fullname}</td>
+          <td style="padding:7px 10px;border-bottom:1px solid #f0f6ff;text-align:center;"><span style="background:#fee2e2;color:#991b1b;padding:2px 8px;border-radius:12px;font-weight:600;">มส.</span></td>
+        </tr>`).join('')}</tbody>
+      </table>
+    </div>`;
+  });
+  html += `<div style="text-align:right;font-size:0.8rem;color:#5a7099;margin-top:16px;">พิมพ์โดย: ครูยุพา ทองคำ | งานวัดผลและประเมินผล</div></div>`;
+  document.getElementById('print-preview-area').innerHTML = html;
+}
+
+function printDoc() {
+  generatePrintPreview();
+  const content = document.getElementById('print-preview-area').innerHTML;
+  const win = window.open('', '_blank');
+  win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&display=swap" rel="stylesheet"><title>รายงาน มส. ปีการศึกษา ${state.year}</title><style>body{font-family:'Sarabun',sans-serif;padding:20px;}@media print{@page{margin:15mm;}}</style></head><body>${content}<script>window.onload=()=>window.print();<\/script></body></html>`);
+  win.document.close();
+}
+
+// ============================================================
+// EXPORT
+// ============================================================
+function exportExcel() {
+  const wb = XLSX.utils.book_new();
+  const summary = [['รหัสวิชา','ชื่อวิชา','กลุ่มสาระ','ระดับชั้น','ครูผู้สอน','จำนวน มส. (คน)']];
+  const schoolTotalEx = state.totalStudents || 0;
+  const totalMsEx = state.records.reduce((a,r) => a + r.students.length, 0);
+  state.records.forEach(r => {
+    summary.push([r.code,r.name||r.subjectName||'',r.group,r.level,r.teacher,r.students.length]);
+  });
+  // footer row
+  summary.push(['','','','','รวม มส. ทั้งหมด',totalMsEx,'','ร้อยละ',(schoolTotalEx>0?(totalMsEx/schoolTotalEx*100).toFixed(1)+'%':'-')]);
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(summary), 'สรุป');
+  const detail = [['รหัสวิชา','ชื่อวิชา','กลุ่มสาระ','ระดับชั้น','ครูผู้สอน','คำนำหน้า','ชื่อ-สกุล','สถานะ']];
+  state.records.forEach(r => r.students.forEach(s => {
+    detail.push([r.code,r.name||r.subjectName||'',r.group,r.level,r.teacher,s.prefix,s.fullname,'มส.']);
+  }));
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(detail), 'รายละเอียด');
+  XLSX.writeFile(wb, `รายงาน_มส_ปี${state.year}.xlsx`);
+  showToast('Export Excel สำเร็จ! 📊', 'success');
+}
+function exportJSON() {
+  const blob = new Blob([JSON.stringify({ records: state.records, year: state.year }, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+  a.download = `ms-backup-${Date.now()}.json`; a.click();
+  showToast('Backup JSON สำเร็จ!', 'success');
+}
+function importJSON() { document.getElementById('import-file').click(); }
+function handleImport(input) {
+  const file = input.files[0]; if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const data = JSON.parse(e.target.result);
+      if (data.records) {
+        state.records = data.records;
+        localStorage.setItem('ms-records-cache', JSON.stringify(state.records));
+        renderRecordList(); showToast('นำเข้าข้อมูลสำเร็จ!', 'success');
+      } else showToast('ไฟล์ไม่ถูกต้อง', 'error');
+    } catch { showToast('ไม่สามารถอ่านไฟล์ได้', 'error'); }
+  };
+  reader.readAsText(file); input.value = '';
+}
+
+// ============================================================
+// UI HELPERS
+// ============================================================
+function setSyncState(s, label) {
+  const dot = document.getElementById('sync-dot');
+  const lbl = document.getElementById('sync-label');
+  if (!dot) return;
+  dot.className = 'sync-dot' + (s==='loading'?' loading':s==='error'?' error':'');
+  if (lbl) lbl.textContent = label;
+}
+function showLoading(msg = '') { document.getElementById('loading-overlay').style.display = 'flex'; document.getElementById('loading-msg').textContent = msg; }
+function hideLoading() { document.getElementById('loading-overlay').style.display = 'none'; }
+
+let toastTimer;
+function showToast(msg, type = '') {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.className = 'toast show ' + type;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 3500);
+}
+
+// ============================================================
+// START
+// ============================================================
+init();
+</script>
+</body>
+</html>
