@@ -207,10 +207,13 @@
       <div class="student-table-wrap">
         <table class="student-table">
           <thead><tr>
-            <th style="width:40px">#</th>
+            <th style="width:36px">#</th>
             <th style="width:82px">คำนำหน้า</th>
             <th>ชื่อ-สกุล</th>
-            <th style="width:52px">ลบ</th>
+            <th style="width:72px">มาเรียน</th>
+            <th style="width:72px">ทั้งหมด</th>
+            <th style="width:64px">ร้อยละ</th>
+            <th style="width:48px">ลบ</th>
           </tr></thead>
           <tbody id="student-tbody"></tbody>
         </table>
@@ -501,8 +504,11 @@ async function saveRecord() {
     localStorage.setItem('ms-records-cache', JSON.stringify(state.records));
     renderRecordList();
     clearForm();
+    startNewRecord();
     setSyncState('ok', 'บันทึกแล้ว');
     showToast('บันทึกลง Google Sheets สำเร็จ! 🎉', 'success');
+    // Auto-reload from Sheets after a short delay
+    setTimeout(() => loadFromSheets(), 1500);
   } catch(err) {
     setSyncState('error', 'บันทึกล้มเหลว');
     showToast('บันทึกไม่สำเร็จ: ' + err.message, 'error');
@@ -533,6 +539,7 @@ async function updateRecord() {
     startNewRecord();
     setSyncState('ok', 'อัปเดตแล้ว');
     showToast('อัปเดต Google Sheets สำเร็จ! ✅', 'success');
+    setTimeout(() => loadFromSheets(), 1500);
   } catch(err) {
     setSyncState('error', 'อัปเดตล้มเหลว');
     showToast('อัปเดตไม่สำเร็จ: ' + err.message, 'error');
@@ -596,19 +603,19 @@ function getFormData() {
     const id = r.id.replace('row-', '');
     const prefix   = document.getElementById('pre-' + id)?.value || '';
     const fullname = (document.getElementById('name-' + id)?.value || '').trim();
-    // ครูส่งเฉพาะรายชื่อนักเรียน มส. — ไม่ต้องกรอกชั่วโมง
-    if (fullname) students.push({ prefix, fullname, attended: 0, total: 0 });
+    const attended = parseFloat(document.getElementById('att-' + id)?.value) || 0;
+    const total    = parseFloat(document.getElementById('tot-' + id)?.value) || 0;
+    if (fullname) students.push({ prefix, fullname, attended, total });
   });
   return {
     teacher: document.getElementById('f-teacher').value,
     group:   document.getElementById('f-subject-group').value,
     code:    document.getElementById('f-code').value.trim(),
-    name:    document.getElementById('f-name').value.trim(),   // maps → F: ชื่อวิชา
+    name:    document.getElementById('f-name').value.trim(),
     level:   document.getElementById('f-level').value,
     students
   };
 }
-// Alias for GAS compatibility — GAS uses 'name' as ชื่อวิชา, matches col F
 
 function validateForm(data) {
   if (!data.teacher)  { showToast('กรุณาเลือกครูผู้สอน', 'error'); return false; }
@@ -707,9 +714,13 @@ function addStudentRow(prefix = '', fullname = '', attended = '', total = '') {
       <option value="นางสาว" ${prefix==='นางสาว'?'selected':''}>นางสาว</option>
     </select></td>
     <td><input type="text" id="name-${id}" value="${fullname}" placeholder="ชื่อ-นามสกุล"></td>
+    <td><input type="number" id="att-${id}" value="${attended}" placeholder="0" min="0" style="text-align:center;" oninput="calcPct(${id})"></td>
+    <td><input type="number" id="tot-${id}" value="${total}" placeholder="0" min="0" style="text-align:center;" oninput="calcPct(${id})"></td>
+    <td style="text-align:center;"><span id="pct-${id}" class="pct-badge">-</span></td>
     <td><button class="btn btn-danger btn-sm" onclick="removeRow(${id})">✕</button></td>`;
   tbody.appendChild(tr);
   renumberRows();
+  if (attended && total) calcPct(id);
 }
 
 function calcPct(id) {
@@ -904,7 +915,9 @@ function buildChart(canvasId, dataMap) {
 // ============================================================
 function generatePrintPreview() {
   const ms = getMSStudents();
-  const allStudents = state.records.reduce((a,r) => a + r.students.length, 0);
+  const schoolTotal = state.totalStudents || 0;
+  const msCount = ms.length;
+  const pctMs = schoolTotal > 0 ? (msCount / schoolTotal * 100).toFixed(1) : '-';
   let html = `<div style="font-family:'Sarabun',sans-serif;color:#1e2d4a;max-width:900px;margin:0 auto;">
     <div style="text-align:center;margin-bottom:24px;padding-bottom:16px;border-bottom:2px solid #1a56a8;">
       <img src="https://nonthaphathr.github.io/uploadimg/logoschool.png" style="height:70px;margin-bottom:8px;" onerror="this.style.display='none'">
@@ -912,7 +925,7 @@ function generatePrintPreview() {
       <p style="font-size:0.88rem;color:#5a7099;margin-top:4px;">ปีการศึกษา ${state.year} | โรงเรียนกระดุมทองวิทยา | ${new Date().toLocaleDateString('th-TH',{year:'numeric',month:'long',day:'numeric'})}</p>
     </div>
     <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px;">
-      ${[['รายวิชาทั้งหมด',state.records.length,'#1a56a8'],['นักเรียนทั้งโรงเรียน',schoolTotal||'-','#0f3d7a'],['นักเรียน มส.',ms.length,'#ef4444'],['ร้อยละ มส.',pctMs+'%','#f59e0b']]
+      ${[['รายวิชาทั้งหมด',state.records.length,'#1a56a8'],['นักเรียนทั้งโรงเรียน',schoolTotal||'-','#0f3d7a'],['นักเรียน มส.',msCount,'#ef4444'],['ร้อยละ มส.',pctMs+'%','#f59e0b']]
         .map(([l,v,c])=>`<div style="background:#f0f6ff;border:1px solid #c7d9f5;border-radius:10px;padding:14px;text-align:center;"><div style="font-size:1.8rem;font-weight:700;color:${c};">${v}</div><div style="font-size:0.8rem;color:#5a7099;">${l}</div></div>`).join('')}
     </div>`;
   state.records.forEach(r => {
@@ -927,13 +940,23 @@ function generatePrintPreview() {
         <thead><tr style="background:#e0f2fe;">
           <th style="padding:7px 10px;border-bottom:1px solid #c7d9f5;text-align:center;width:40px">#</th>
           <th style="padding:7px 10px;border-bottom:1px solid #c7d9f5;">ชื่อ-สกุล</th>
-          <th style="padding:7px 10px;border-bottom:1px solid #c7d9f5;text-align:center;width:80px">สถานะ</th>
+          <th style="padding:7px 10px;border-bottom:1px solid #c7d9f5;text-align:center;width:70px">มาเรียน</th>
+          <th style="padding:7px 10px;border-bottom:1px solid #c7d9f5;text-align:center;width:70px">ทั้งหมด</th>
+          <th style="padding:7px 10px;border-bottom:1px solid #c7d9f5;text-align:center;width:70px">ร้อยละ</th>
+          <th style="padding:7px 10px;border-bottom:1px solid #c7d9f5;text-align:center;width:70px">สถานะ</th>
         </tr></thead>
-        <tbody>${r.students.map((s,i)=>`<tr style="background:${i%2===0?'#fff':'#f8faff'}">
+        <tbody>${r.students.map((s,i)=>{
+          const pct = s.total > 0 ? (s.attended/s.total*100).toFixed(1) : '-';
+          const pctNum = s.total > 0 ? s.attended/s.total*100 : 100;
+          return `<tr style="background:${i%2===0?'#fff':'#f8faff'}">
           <td style="padding:7px 10px;border-bottom:1px solid #f0f6ff;text-align:center;">${i+1}</td>
           <td style="padding:7px 10px;border-bottom:1px solid #f0f6ff;">${s.prefix} ${s.fullname}</td>
+          <td style="padding:7px 10px;border-bottom:1px solid #f0f6ff;text-align:center;">${s.attended||'-'}</td>
+          <td style="padding:7px 10px;border-bottom:1px solid #f0f6ff;text-align:center;">${s.total||'-'}</td>
+          <td style="padding:7px 10px;border-bottom:1px solid #f0f6ff;text-align:center;color:${pctNum<80?'#dc2626':'#065f46'};font-weight:600;">${pct}%</td>
           <td style="padding:7px 10px;border-bottom:1px solid #f0f6ff;text-align:center;"><span style="background:#fee2e2;color:#991b1b;padding:2px 8px;border-radius:12px;font-weight:600;">มส.</span></td>
-        </tr>`).join('')}</tbody>
+        </tr>`;
+        }).join('')}</tbody>
       </table>
     </div>`;
   });
