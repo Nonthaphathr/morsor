@@ -7,6 +7,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&family=Prompt:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <style>
   :root {
     --primary: #1a56a8;
@@ -171,15 +172,16 @@
     <div class="card" id="form-card">
       <div class="card-title">✏️ <span id="form-title">กรอกข้อมูลรายวิชา</span></div>
       <div class="form-grid">
-        <div class="form-group"><label>ครูผู้สอน *</label>
-          <div style="display:flex;gap:6px;">
-            <select class="form-control" id="f-teacher-prefix" style="width:110px;flex-shrink:0;">
+        <div class="form-group" style="grid-column: span 2;">
+          <label>ครูผู้สอน *</label>
+          <div style="display:grid;grid-template-columns:120px 1fr 1fr;gap:8px;">
+            <select class="form-control" id="f-teacher-prefix">
               <option value="นาย">นาย</option>
               <option value="นาง">นาง</option>
               <option value="นางสาว">นางสาว</option>
             </select>
-            <input type="text" class="form-control" id="f-teacher-fname" placeholder="ชื่อ" style="min-width:0;">
-            <input type="text" class="form-control" id="f-teacher-lname" placeholder="สกุล" style="min-width:0;">
+            <input type="text" class="form-control" id="f-teacher-fname" placeholder="ชื่อ">
+            <input type="text" class="form-control" id="f-teacher-lname" placeholder="นามสกุล">
           </div>
         </div>
         <div class="form-group"><label>กลุ่มสาระการเรียนรู้ *</label><select class="form-control" id="f-subject-group"><option value="">-- เลือกกลุ่มสาระ --</option></select></div>
@@ -233,6 +235,17 @@
           <button class="btn btn-primary btn-sm" onclick="startNewRecord()">➕ เพิ่มรายการใหม่</button>
         </div>
       </div>
+      <!-- FILTER BAR -->
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:8px;margin-bottom:12px;padding:12px;background:var(--surface2);border-radius:var(--radius-sm);border:1px solid var(--border);">
+        <input type="text" class="form-control" id="filter-code" placeholder="🔍 รหัสวิชา" oninput="renderRecordList()" style="font-size:0.85rem;">
+        <input type="text" class="form-control" id="filter-name" placeholder="🔍 ชื่อวิชา" oninput="renderRecordList()" style="font-size:0.85rem;">
+        <select class="form-control" id="filter-group" onchange="renderRecordList()" style="font-size:0.85rem;">
+          <option value="">📚 ทุกกลุ่มสาระ</option>
+        </select>
+        <input type="text" class="form-control" id="filter-teacher" placeholder="🔍 ครูผู้สอน" oninput="renderRecordList()" style="font-size:0.85rem;">
+        <button class="btn btn-outline btn-sm" onclick="clearFilters()" style="white-space:nowrap;">✕ ล้างตัวกรอง</button>
+      </div>
+      <div id="record-count" style="font-size:0.8rem;color:var(--text-muted);margin-bottom:8px;"></div>
       <div id="record-list"><div class="empty-state"><div class="icon">⏳</div><p>กำลังโหลดข้อมูล...</p></div></div>
     </div>
   </div>
@@ -556,12 +569,19 @@ async function saveRecord() {
     clearForm();
     startNewRecord();
     setSyncState('ok', 'บันทึกแล้ว');
-    showToast('บันทึกลง Google Sheets สำเร็จ! 🎉', 'success');
-    // Auto-reload from Sheets after a short delay
+    Swal.fire({
+      icon: 'success',
+      title: 'บันทึกสำเร็จ! 🎉',
+      html: `<b>${record.code} ${record.name}</b><br>นักเรียน มส. ${record.students.length} คน<br><span style="font-size:0.85rem;color:#5a7099;">บันทึกลง Google Sheets แล้ว</span>`,
+      confirmButtonColor: '#1a56a8',
+      confirmButtonText: 'ตกลง',
+      timer: 3000,
+      timerProgressBar: true
+    });
     setTimeout(() => loadFromSheets(), 1500);
   } catch(err) {
     setSyncState('error', 'บันทึกล้มเหลว');
-    showToast('บันทึกไม่สำเร็จ: ' + err.message, 'error');
+    Swal.fire({ icon: 'error', title: 'บันทึกไม่สำเร็จ', text: err.message, confirmButtonColor: '#ef4444' });
   } finally {
     setFormBusy(false);
   }
@@ -588,11 +608,19 @@ async function updateRecord() {
     clearForm();
     startNewRecord();
     setSyncState('ok', 'อัปเดตแล้ว');
-    showToast('อัปเดต Google Sheets สำเร็จ! ✅', 'success');
+    Swal.fire({
+      icon: 'success',
+      title: 'อัปเดตสำเร็จ! ✅',
+      html: `<b>${record.code} ${record.name}</b><br><span style="font-size:0.85rem;color:#5a7099;">บันทึกลง Google Sheets แล้ว</span>`,
+      confirmButtonColor: '#1a56a8',
+      confirmButtonText: 'ตกลง',
+      timer: 3000,
+      timerProgressBar: true
+    });
     setTimeout(() => loadFromSheets(), 1500);
   } catch(err) {
     setSyncState('error', 'อัปเดตล้มเหลว');
-    showToast('อัปเดตไม่สำเร็จ: ' + err.message, 'error');
+    Swal.fire({ icon: 'error', title: 'อัปเดตไม่สำเร็จ', text: err.message, confirmButtonColor: '#ef4444' });
   } finally {
     setFormBusy(false);
   }
@@ -602,7 +630,18 @@ async function updateRecord() {
 // DELETE
 // ============================================================
 async function deleteRecord() {
-  if (!confirm('⚠️ ต้องการลบรายการนี้ออกจาก Google Sheets?\nการลบไม่สามารถย้อนกลับได้!')) return;
+  const result = await Swal.fire({
+    icon: 'warning',
+    title: 'ลบรายการนี้?',
+    text: 'การลบไม่สามารถย้อนกลับได้!',
+    showCancelButton: true,
+    confirmButtonColor: '#ef4444',
+    cancelButtonColor: '#6b7280',
+    confirmButtonText: 'ลบเลย',
+    cancelButtonText: 'ยกเลิก'
+  });
+  if (!result.isConfirmed) return;
+
   const recordId = state.editingId;
   setFormBusy(true);
   setSyncState('loading', 'กำลังลบ...');
@@ -616,10 +655,10 @@ async function deleteRecord() {
     clearForm();
     startNewRecord();
     setSyncState('ok', 'ลบแล้ว');
-    showToast('ลบข้อมูลออกจาก Google Sheets แล้ว 🗑️', 'success');
+    Swal.fire({ icon: 'success', title: 'ลบสำเร็จ', text: 'ลบข้อมูลออกจาก Google Sheets แล้ว', confirmButtonColor: '#1a56a8', timer: 2500, timerProgressBar: true });
   } catch(err) {
     setSyncState('error', 'ลบล้มเหลว');
-    showToast('ลบไม่สำเร็จ: ' + err.message, 'error');
+    Swal.fire({ icon: 'error', title: 'ลบไม่สำเร็จ', text: err.message, confirmButtonColor: '#ef4444' });
   } finally {
     setFormBusy(false);
   }
@@ -672,12 +711,12 @@ function getFormData() {
 }
 
 function validateForm(data) {
-  if (!data.teacher)  { showToast('กรุณาเลือกครูผู้สอน', 'error'); return false; }
-  if (!data.group)    { showToast('กรุณาเลือกกลุ่มสาระ', 'error'); return false; }
-  if (!data.code)     { showToast('กรุณากรอกรหัสวิชา', 'error'); return false; }
-  if (!data.name)     { showToast('กรุณากรอกชื่อวิชา', 'error'); return false; }
-  if (!data.level)    { showToast('กรุณาเลือกระดับชั้น', 'error'); return false; }
-  if (!data.students.length) { showToast('กรุณากรอกข้อมูลนักเรียนอย่างน้อย 1 คน', 'error'); return false; }
+  if (!data.teacher)  { Swal.fire({ icon:'warning', title:'กรุณากรอกชื่อครูผู้สอน', confirmButtonColor:'#1a56a8' }); return false; }
+  if (!data.group)    { Swal.fire({ icon:'warning', title:'กรุณาเลือกกลุ่มสาระ', confirmButtonColor:'#1a56a8' }); return false; }
+  if (!data.code)     { Swal.fire({ icon:'warning', title:'กรุณากรอกรหัสวิชา', confirmButtonColor:'#1a56a8' }); return false; }
+  if (!data.name)     { Swal.fire({ icon:'warning', title:'กรุณากรอกชื่อวิชา', confirmButtonColor:'#1a56a8' }); return false; }
+  if (!data.level)    { Swal.fire({ icon:'warning', title:'กรุณาเลือกระดับชั้น', confirmButtonColor:'#1a56a8' }); return false; }
+  if (!data.students.length) { Swal.fire({ icon:'warning', title:'กรุณากรอกข้อมูลนักเรียนอย่างน้อย 1 คน', confirmButtonColor:'#1a56a8' }); return false; }
   return true;
 }
 
@@ -711,22 +750,68 @@ function clearForm() {
 }
 
 // ============================================================
-// RECORD LIST
+// RECORD LIST + FILTER
 // ============================================================
+function populateFilterGroup() {
+  const sel = document.getElementById('filter-group');
+  if (!sel) return;
+  const current = sel.value;
+  const groups = [...new Set(state.records.map(r => r.group).filter(Boolean))].sort();
+  sel.innerHTML = '<option value="">📚 ทุกกลุ่มสาระ</option>';
+  groups.forEach(g => sel.innerHTML += `<option value="${g}">${g}</option>`);
+  if (current) sel.value = current;
+}
+
+function clearFilters() {
+  ['filter-code','filter-name','filter-teacher'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.value = '';
+  });
+  const fg = document.getElementById('filter-group'); if (fg) fg.value = '';
+  renderRecordList();
+}
+
 function renderRecordList() {
+  // อัปเดต dropdown กลุ่มสาระใน filter
+  populateFilterGroup();
+
+  const fCode    = (document.getElementById('filter-code')?.value    || '').trim().toLowerCase();
+  const fName    = (document.getElementById('filter-name')?.value    || '').trim().toLowerCase();
+  const fGroup   = (document.getElementById('filter-group')?.value   || '');
+  const fTeacher = (document.getElementById('filter-teacher')?.value || '').trim().toLowerCase();
+
+  const filtered = state.records.filter(r => {
+    if (fCode    && !(r.code  || '').toLowerCase().includes(fCode))    return false;
+    if (fName    && !((r.name || r.subjectName || '')).toLowerCase().includes(fName)) return false;
+    if (fGroup   && r.group !== fGroup)  return false;
+    if (fTeacher && !(r.teacher || '').toLowerCase().includes(fTeacher)) return false;
+    return true;
+  });
+
+  const countEl = document.getElementById('record-count');
+  if (countEl) {
+    const hasFilter = fCode || fName || fGroup || fTeacher;
+    countEl.textContent = hasFilter
+      ? `แสดง ${filtered.length} จาก ${state.records.length} รายการ`
+      : `ทั้งหมด ${state.records.length} รายการ`;
+  }
+
   const wrap = document.getElementById('record-list');
   if (!state.records.length) {
     wrap.innerHTML = '<div class="empty-state"><div class="icon">📂</div><p>ยังไม่มีรายการ กด "เพิ่มรายการใหม่" เพื่อเริ่มต้น</p></div>';
     return;
   }
-  wrap.innerHTML = state.records.map(r => {
-    const msCount = r.students.filter(s => s.total > 0 && (s.attended/s.total*100) < 80).length;
+  if (!filtered.length) {
+    wrap.innerHTML = '<div class="empty-state"><div class="icon">🔍</div><p>ไม่พบรายการที่ตรงกับตัวกรอง</p></div>';
+    return;
+  }
+  wrap.innerHTML = filtered.map(r => {
+    const msCount = r.students.length;
     return `<div class="record-card" data-id="${r.id}" onclick="editRecord('${r.id}')">
       <div class="record-info">
         <strong>${r.code} ${r.name || r.subjectName || ''}</strong>
         <div class="record-meta">🏫 ${r.level} | 👨‍🏫 ${r.teacher} | 📚 ${r.group}</div>
       </div>
-      <span style="background:#fee2e2;color:#991b1b;padding:3px 10px;border-radius:20px;font-size:0.8rem;font-weight:600;white-space:nowrap;">มส. ${msCount}/${r.students.length}</span>
+      <span style="background:#fee2e2;color:#991b1b;padding:3px 10px;border-radius:20px;font-size:0.8rem;font-weight:600;white-space:nowrap;">มส. ${msCount} คน</span>
     </div>`;
   }).join('');
 }
