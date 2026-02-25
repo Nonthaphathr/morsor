@@ -340,7 +340,7 @@
 // ============================================================
 // CONFIG & STATE
 // ============================================================
-const DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbzYKUBve0yPh3gQ95mpnNOi4mrZ1YCdw2SC40SrsOkBCf5Co5D5OcV6I8YGhCo7bk-u/exec';
+const DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbwmkbtM1tJa2-UCuXLbAyGO-d1nZ7Kf6MZAZuECIsSwlh8kuXWlzyD5htAXnrTwH0YD/exec';
 
 let state = {
   records: [],     // loaded from Sheets
@@ -357,36 +357,93 @@ let rowId = 0;
 // INIT
 // ============================================================
 function init() {
-  const saved = localStorage.getItem('ms-settings');
-  if (saved) {
+  // โหลด gasUrl จาก localStorage ก่อน (เครื่องนี้อาจตั้ง URL ไว้)
+  const savedUrl = localStorage.getItem('ms-gas-url');
+  if (savedUrl) state.gasUrl = savedUrl;
+  document.getElementById('s-gas-url').value = state.gasUrl;
+
+  // โหลด settings จาก cache localStorage ก่อน (เพื่อให้ dropdown ใช้งานได้ทันที)
+  const localSettings = localStorage.getItem('ms-settings');
+  if (localSettings) {
     try {
-      const s = JSON.parse(saved);
+      const s = JSON.parse(localSettings);
       state.teachers = s.teachers || [];
       state.groups   = s.groups   || [];
       state.year     = s.year     || '2568';
-      state.gasUrl   = s.gasUrl   || DEFAULT_GAS_URL;
     } catch(e) {}
   }
   if (!state.groups.length) {
     state.groups = ['ภาษาไทย','คณิตศาสตร์','วิทยาศาสตร์และเทคโนโลยี','สังคมศึกษา ศาสนา และวัฒนธรรม','สุขศึกษาและพลศึกษา','ศิลปะ','การงานอาชีพ','ภาษาต่างประเทศ'];
   }
-  document.getElementById('s-year').value    = state.year;
-  document.getElementById('s-gas-url').value = state.gasUrl;
+
+  state.totalStudents = parseInt(localStorage.getItem('ms-total-students') || '0') || 0;
+  document.getElementById('s-total-students').value = state.totalStudents || '';
+  document.getElementById('s-year').value = state.year;
+  updateTotalStudentsDisplay();
+
   renderTeacherDropdowns();
   renderGroupDropdowns();
   renderTeacherTags();
   renderGroupTags();
   initStudentRows(3);
-  state.totalStudents = parseInt(localStorage.getItem('ms-total-students') || '0') || 0;
-  document.getElementById('s-total-students').value = state.totalStudents || '';
-  updateTotalStudentsDisplay();
-  loadFromSheets();
+
+  // โหลด settings + records จาก Sheets (sync ข้ามเครื่อง)
+  loadAllFromSheets();
 }
 
-function saveSettings() {
-  localStorage.setItem('ms-settings', JSON.stringify({
-    teachers: state.teachers, groups: state.groups, year: state.year, gasUrl: state.gasUrl
-  }));
+async function loadAllFromSheets() {
+  showLoading('⏳ กำลังโหลดข้อมูลจาก Google Sheets...');
+  setSyncState('loading', 'กำลังเชื่อมต่อ...');
+  try {
+    // โหลด settings และ records พร้อมกัน
+    const [settingsRes, recordsRes] = await Promise.all([
+      gasGet({ action: 'getSettings' }),
+      gasGet({ action: 'getAll' })
+    ]);
+
+    // ✅ อัปเดต settings จาก Sheets
+    if (settingsRes.ok && settingsRes.settings) {
+      const s = settingsRes.settings;
+      if (Array.isArray(s.teachers) && s.teachers.length) state.teachers = s.teachers;
+      if (Array.isArray(s.groups)   && s.groups.length)   state.groups   = s.groups;
+      if (s.year)           state.year = s.year;
+      if (s.totalStudents)  {
+        state.totalStudents = parseInt(s.totalStudents) || 0;
+        document.getElementById('s-total-students').value = state.totalStudents || '';
+        updateTotalStudentsDisplay();
+      }
+      document.getElementById('s-year').value = state.year;
+      saveSettingsLocal();
+      renderTeacherDropdowns();
+      renderGroupDropdowns();
+      renderTeacherTags();
+      renderGroupTags();
+    }
+
+    // ✅ อัปเดต records จาก Sheets
+    if (recordsRes.ok) {
+      state.records = recordsRes.records || [];
+      localStorage.setItem('ms-records-cache', JSON.stringify(state.records));
+      renderRecordList();
+      setSyncState('ok', `โหลดแล้ว (${state.records.length} รายวิชา)`);
+      showToast(`โหลดข้อมูลสำเร็จ — ${state.records.length} รายวิชา`, 'success');
+    } else {
+      throw new Error(recordsRes.error || 'GAS returned error');
+    }
+  } catch(err) {
+    setSyncState('error', 'เชื่อมต่อไม่ได้');
+    showToast('โหลดจาก Sheets ไม่สำเร็จ: ' + err.message, 'error');
+    const cache = localStorage.getItem('ms-records-cache');
+    if (cache) {
+      state.records = JSON.parse(cache);
+      renderRecordList();
+      showToast('แสดงข้อมูล cache แทน (อาจไม่ใช่ล่าสุด)', 'warn');
+    } else {
+      renderRecordList();
+    }
+  } finally {
+    hideLoading();
+  }
 }
 
 function saveTotalStudents() {
@@ -394,6 +451,7 @@ function saveTotalStudents() {
   state.totalStudents = val;
   localStorage.setItem('ms-total-students', val);
   updateTotalStudentsDisplay();
+  saveSettingsToSheets();
   showToast(`บันทึก: นักเรียนทั้งโรงเรียน ${val} คน ✅`, 'success');
 }
 
@@ -447,13 +505,37 @@ async function gasGet(params = {}) {
 // POST → แปลงเป็น GET + encode payload
 async function gasPost(body) {
   const params = { action: body.action };
-  if (body.record)   params.record   = encodeURIComponent(JSON.stringify(body.record));
-  if (body.recordId) params.recordId = encodeURIComponent(String(body.recordId));
+  if (body.record)    params.record    = encodeURIComponent(JSON.stringify(body.record));
+  if (body.recordId)  params.recordId  = encodeURIComponent(String(body.recordId));
+  if (body.settings)  params.settings  = encodeURIComponent(body.settings);
   return gasJsonp(params);
 }
 
+function saveSettingsLocal() {
+  localStorage.setItem('ms-settings', JSON.stringify({
+    teachers: state.teachers, groups: state.groups, year: state.year
+  }));
+  localStorage.setItem('ms-gas-url', state.gasUrl);
+}
+
+// บันทึก settings ขึ้น Sheets (sync ข้ามเครื่อง)
+async function saveSettingsToSheets() {
+  try {
+    const settings = {
+      teachers: state.teachers,
+      groups:   state.groups,
+      year:     state.year,
+      totalStudents: state.totalStudents || 0
+    };
+    const res = await gasPost({ action: 'saveSettings', settings: JSON.stringify(settings) });
+    if (!res.ok) throw new Error(res.error);
+  } catch(err) {
+    console.warn('saveSettingsToSheets failed:', err.message);
+  }
+}
+
 // ============================================================
-// LOAD FROM SHEETS
+// LOAD FROM SHEETS (manual refresh)
 // ============================================================
 async function loadFromSheets() {
   setSyncState('loading', 'กำลังโหลด...');
@@ -472,7 +554,6 @@ async function loadFromSheets() {
   } catch(err) {
     setSyncState('error', 'เชื่อมต่อไม่ได้');
     showToast('โหลดจาก Sheets ไม่สำเร็จ: ' + err.message, 'error');
-    // fallback cache
     const cache = localStorage.getItem('ms-records-cache');
     if (cache) {
       state.records = JSON.parse(cache);
@@ -789,22 +870,43 @@ function renderGroupTags() {
   document.getElementById('group-tags').innerHTML = state.groups.map((g,i) =>
     `<div class="tag">${g} <span class="del" onclick="removeGroup(${i})">✕</span></div>`).join('');
 }
-function saveYear() { state.year = document.getElementById('s-year').value.trim() || '2568'; saveSettings(); showToast('บันทึกปีการศึกษาแล้ว', 'success'); }
-function saveGasUrl() { state.gasUrl = document.getElementById('s-gas-url').value.trim() || DEFAULT_GAS_URL; saveSettings(); showToast('บันทึก URL แล้ว', 'success'); }
+function saveYear() {
+  state.year = document.getElementById('s-year').value.trim() || '2568';
+  saveSettingsLocal();
+  saveSettingsToSheets();
+  showToast('บันทึกปีการศึกษาแล้ว ✅', 'success');
+}
+function saveGasUrl() {
+  state.gasUrl = document.getElementById('s-gas-url').value.trim() || DEFAULT_GAS_URL;
+  saveSettingsLocal();
+  showToast('บันทึก URL แล้ว', 'success');
+}
 function addTeachers() {
   const raw = document.getElementById('s-teachers-input').value.trim(); if (!raw) return;
   raw.split('\n').forEach(t => { t = t.trim(); if (t && !state.teachers.includes(t)) state.teachers.push(t); });
   document.getElementById('s-teachers-input').value = '';
-  saveSettings(); renderTeacherTags(); renderTeacherDropdowns(); showToast('เพิ่มครูแล้ว ✅', 'success');
+  saveSettingsLocal(); saveSettingsToSheets();
+  renderTeacherTags(); renderTeacherDropdowns();
+  showToast('เพิ่มครูแล้ว ✅ (sync ขึ้น Sheets)', 'success');
 }
-function removeTeacher(i) { state.teachers.splice(i,1); saveSettings(); renderTeacherTags(); renderTeacherDropdowns(); }
+function removeTeacher(i) {
+  state.teachers.splice(i,1);
+  saveSettingsLocal(); saveSettingsToSheets();
+  renderTeacherTags(); renderTeacherDropdowns();
+}
 function addGroups() {
   const raw = document.getElementById('s-groups-input').value.trim(); if (!raw) return;
   raw.split('\n').forEach(g => { g = g.trim(); if (g && !state.groups.includes(g)) state.groups.push(g); });
   document.getElementById('s-groups-input').value = '';
-  saveSettings(); renderGroupTags(); renderGroupDropdowns(); showToast('เพิ่มกลุ่มสาระแล้ว ✅', 'success');
+  saveSettingsLocal(); saveSettingsToSheets();
+  renderGroupTags(); renderGroupDropdowns();
+  showToast('เพิ่มกลุ่มสาระแล้ว ✅ (sync ขึ้น Sheets)', 'success');
 }
-function removeGroup(i) { state.groups.splice(i,1); saveSettings(); renderGroupTags(); renderGroupDropdowns(); }
+function removeGroup(i) {
+  state.groups.splice(i,1);
+  saveSettingsLocal(); saveSettingsToSheets();
+  renderGroupTags(); renderGroupDropdowns();
+}
 
 // ============================================================
 // TAB NAVIGATION
