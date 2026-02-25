@@ -171,7 +171,17 @@
     <div class="card" id="form-card">
       <div class="card-title">✏️ <span id="form-title">กรอกข้อมูลรายวิชา</span></div>
       <div class="form-grid">
-        <div class="form-group"><label>ครูผู้สอน *</label><select class="form-control" id="f-teacher"><option value="">-- เลือกครู --</option></select></div>
+        <div class="form-group"><label>ครูผู้สอน *</label>
+          <div style="display:flex;gap:6px;">
+            <select class="form-control" id="f-teacher-prefix" style="width:110px;flex-shrink:0;">
+              <option value="นาย">นาย</option>
+              <option value="นาง">นาง</option>
+              <option value="นางสาว">นางสาว</option>
+            </select>
+            <input type="text" class="form-control" id="f-teacher-fname" placeholder="ชื่อ" style="min-width:0;">
+            <input type="text" class="form-control" id="f-teacher-lname" placeholder="สกุล" style="min-width:0;">
+          </div>
+        </div>
         <div class="form-group"><label>กลุ่มสาระการเรียนรู้ *</label><select class="form-control" id="f-subject-group"><option value="">-- เลือกกลุ่มสาระ --</option></select></div>
         <div class="form-group"><label>รหัสวิชา *</label><input type="text" class="form-control" id="f-code" placeholder="เช่น ท31101"></div>
         <div class="form-group"><label>ชื่อวิชา *</label><input type="text" class="form-control" id="f-name" placeholder="เช่น ภาษาไทย 1"></div>
@@ -261,22 +271,7 @@
       <hr class="divider">
       <div class="settings-section">
         <h3>👥 จำนวนนักเรียนทั้งหมดในโรงเรียน</h3>
-        <p style="font-size:0.8rem;color:var(--text-muted);margin-bottom:8px;">ใช้คำนวณร้อยละนักเรียน มส. จากนักเรียนทั้งโรงเรียน</p>
-        <input type="number" class="form-control" id="s-total-students" placeholder="เช่น 480" min="1" style="max-width:200px;">
-        <button class="btn btn-primary btn-sm" style="margin-top:8px;" onclick="saveTotalStudents()">บันทึก</button>
-        <div id="total-students-display" style="margin-top:8px;font-size:0.82rem;color:var(--text-muted);"></div>
-      </div>
-      <hr class="divider">
-      <div class="settings-section">
-        <h3>👨‍🏫 รายชื่อครู</h3>
-        <p style="font-size:0.8rem;color:var(--text-muted);margin-bottom:8px;">
-          ดึงจาก Google Sheet <strong>"ชื่อครูในระบบ"</strong> คอลัมน์ A อัตโนมัติ — แก้ไขรายชื่อครูในชีทได้โดยตรง
-        </p>
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
-          <button class="btn btn-outline btn-sm" onclick="reloadTeachers()">🔄 โหลดชื่อครูใหม่</button>
-          <span id="teacher-load-status" style="font-size:0.8rem;color:var(--text-muted);"></span>
-        </div>
-        <div class="tag-list" id="teacher-tags"></div>
+        <p style="font-size:0.8rem;color:var(--text-muted);margin-bottom:4px;">ใช้คำนวณร้อยละนักเรียน มส. — ค่าปัจจุบัน: <strong>142 คน</strong> (hardcode)</p>
       </div>
       <hr class="divider">
       <div class="settings-section">
@@ -360,38 +355,35 @@ let rowId = 0;
 // ============================================================
 // INIT
 // ============================================================
+const TOTAL_STUDENTS = 142; // hardcode จำนวนนักเรียนทั้งโรงเรียน
+
 function init() {
-  // โหลด gasUrl จาก localStorage ก่อน (เครื่องนี้อาจตั้ง URL ไว้)
+  // โหลด gasUrl จาก localStorage
   const savedUrl = localStorage.getItem('ms-gas-url');
   if (savedUrl) state.gasUrl = savedUrl;
   document.getElementById('s-gas-url').value = state.gasUrl;
 
-  // โหลด settings จาก cache localStorage ก่อน (เพื่อให้ dropdown ใช้งานได้ทันที)
+  // โหลด settings จาก cache localStorage
   const localSettings = localStorage.getItem('ms-settings');
   if (localSettings) {
     try {
       const s = JSON.parse(localSettings);
-      state.teachers = s.teachers || [];
-      state.groups   = s.groups   || [];
-      state.year     = s.year     || '2568';
+      state.groups = s.groups || [];
+      state.year   = s.year   || '2568';
     } catch(e) {}
   }
   if (!state.groups.length) {
     state.groups = ['ภาษาไทย','คณิตศาสตร์','วิทยาศาสตร์และเทคโนโลยี','สังคมศึกษา ศาสนา และวัฒนธรรม','สุขศึกษาและพลศึกษา','ศิลปะ','การงานอาชีพ','ภาษาต่างประเทศ'];
   }
 
-  state.totalStudents = parseInt(localStorage.getItem('ms-total-students') || '0') || 0;
-  document.getElementById('s-total-students').value = state.totalStudents || '';
+  state.totalStudents = TOTAL_STUDENTS;
   document.getElementById('s-year').value = state.year;
-  updateTotalStudentsDisplay();
 
-  renderTeacherDropdowns();
   renderGroupDropdowns();
-  renderTeacherTags();
   renderGroupTags();
   initStudentRows(3);
 
-  // โหลด settings + records จาก Sheets (sync ข้ามเครื่อง)
+  // โหลด settings + records จาก Sheets
   loadAllFromSheets();
 }
 
@@ -399,29 +391,16 @@ async function loadAllFromSheets() {
   showLoading('⏳ กำลังโหลดข้อมูลจาก Google Sheets...');
   setSyncState('loading', 'กำลังเชื่อมต่อ...');
   try {
-    const [teachersRes, settingsRes, recordsRes] = await Promise.all([
-      gasGet({ action: 'getTeachers' }),
+    const [settingsRes, recordsRes] = await Promise.all([
       gasGet({ action: 'getSettings' }),
       gasGet({ action: 'getAll' })
     ]);
 
-    // ✅ โหลดชื่อครูจาก Sheet "ชื่อครูในระบบ"
-    if (teachersRes.ok && teachersRes.teachers && teachersRes.teachers.length) {
-      state.teachers = teachersRes.teachers;
-      renderTeacherDropdowns();
-      renderTeacherTags();
-    }
-
-    // ✅ โหลด settings (groups, year, totalStudents)
+    // ✅ โหลด settings (groups, year)
     if (settingsRes.ok && settingsRes.settings) {
       const s = settingsRes.settings;
       if (Array.isArray(s.groups) && s.groups.length) state.groups = s.groups;
       if (s.year) state.year = s.year;
-      if (s.totalStudents) {
-        state.totalStudents = parseInt(s.totalStudents) || 0;
-        document.getElementById('s-total-students').value = state.totalStudents || '';
-        updateTotalStudentsDisplay();
-      }
       document.getElementById('s-year').value = state.year;
       saveSettingsLocal();
       renderGroupDropdowns();
@@ -454,41 +433,6 @@ async function loadAllFromSheets() {
   }
 }
 
-// โหลดชื่อครูใหม่จาก Sheet (ปุ่มในหน้าตั้งค่า)
-async function reloadTeachers() {
-  const statusEl = document.getElementById('teacher-load-status');
-  if (statusEl) statusEl.textContent = '⏳ กำลังโหลด...';
-  try {
-    const res = await gasGet({ action: 'getTeachers' });
-    if (res.ok && res.teachers) {
-      state.teachers = res.teachers;
-      saveSettingsLocal();
-      renderTeacherDropdowns();
-      renderTeacherTags();
-      if (statusEl) statusEl.textContent = `✅ โหลดแล้ว ${res.teachers.length} คน`;
-      showToast(`โหลดชื่อครูสำเร็จ — ${res.teachers.length} คน`, 'success');
-    } else {
-      throw new Error(res.error || 'ไม่พบข้อมูล');
-    }
-  } catch(err) {
-    if (statusEl) statusEl.textContent = '❌ โหลดไม่สำเร็จ';
-    showToast('โหลดชื่อครูไม่สำเร็จ: ' + err.message, 'error');
-  }
-}
-
-function saveTotalStudents() {
-  const val = parseInt(document.getElementById('s-total-students').value) || 0;
-  state.totalStudents = val;
-  localStorage.setItem('ms-total-students', val);
-  updateTotalStudentsDisplay();
-  saveSettingsToSheets();
-  showToast(`บันทึก: นักเรียนทั้งโรงเรียน ${val} คน ✅`, 'success');
-}
-
-function updateTotalStudentsDisplay() {
-  const el = document.getElementById('total-students-display');
-  if (el) el.textContent = state.totalStudents ? `ปัจจุบัน: ${state.totalStudents} คน` : '';
-}
 
 // ============================================================
 // GAS API — ใช้ JSONP (GET) เพื่อหลีกเลี่ยง CORS
@@ -543,20 +487,15 @@ async function gasPost(body) {
 
 function saveSettingsLocal() {
   localStorage.setItem('ms-settings', JSON.stringify({
-    teachers: state.teachers, groups: state.groups, year: state.year
+    groups: state.groups, year: state.year
   }));
   localStorage.setItem('ms-gas-url', state.gasUrl);
 }
 
-// บันทึก settings ขึ้น Sheets (sync ข้ามเครื่อง)
+// บันทึก settings ขึ้น Sheets
 async function saveSettingsToSheets() {
   try {
-    const settings = {
-      teachers: state.teachers,
-      groups:   state.groups,
-      year:     state.year,
-      totalStudents: state.totalStudents || 0
-    };
+    const settings = { groups: state.groups, year: state.year };
     const res = await gasPost({ action: 'saveSettings', settings: JSON.stringify(settings) });
     if (!res.ok) throw new Error(res.error);
   } catch(err) {
@@ -718,8 +657,12 @@ function getFormData() {
     const total    = parseFloat(document.getElementById('tot-' + id)?.value) || 0;
     if (fullname) students.push({ prefix, fullname, attended, total });
   });
+  const tPrefix = document.getElementById('f-teacher-prefix').value;
+  const tFname  = document.getElementById('f-teacher-fname').value.trim();
+  const tLname  = document.getElementById('f-teacher-lname').value.trim();
+  const teacher = tFname ? `${tPrefix}${tFname} ${tLname}`.trim() : '';
   return {
-    teacher: document.getElementById('f-teacher').value,
+    teacher,
     group:   document.getElementById('f-subject-group').value,
     code:    document.getElementById('f-code').value.trim(),
     name:    document.getElementById('f-name').value.trim(),
@@ -755,7 +698,10 @@ function startNewRecord() {
 }
 
 function clearForm() {
-  ['f-teacher','f-subject-group','f-code','f-name','f-level'].forEach(id => {
+  document.getElementById('f-teacher-prefix').value = 'นาย';
+  document.getElementById('f-teacher-fname').value  = '';
+  document.getElementById('f-teacher-lname').value  = '';
+  ['f-subject-group','f-code','f-name','f-level'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.value = '';
   });
@@ -789,12 +735,26 @@ function editRecord(id) {
   const rec = state.records.find(r => r.id === id);
   if (!rec) return;
   state.editingId = id;
-  document.getElementById('f-teacher').value       = rec.teacher      || '';
+
+  // แยกชื่อครูเป็นคำนำหน้า ชื่อ สกุล
+  const teacherFull = rec.teacher || '';
+  const prefixes = ['นางสาว','นาง','นาย'];
+  let tPrefix = 'นาย', tRest = teacherFull;
+  for (const p of prefixes) {
+    if (teacherFull.startsWith(p)) { tPrefix = p; tRest = teacherFull.slice(p.length).trim(); break; }
+  }
+  const parts = tRest.split(' ');
+  document.getElementById('f-teacher-prefix').value = tPrefix;
+  document.getElementById('f-teacher-fname').value  = parts[0] || '';
+  document.getElementById('f-teacher-lname').value  = parts.slice(1).join(' ') || '';
+
   document.getElementById('f-subject-group').value = rec.group        || '';
   document.getElementById('f-code').value          = rec.code         || '';
   document.getElementById('f-name').value          = rec.name || rec.subjectName || '';
   document.getElementById('f-level').value         = rec.level        || '';
-  const _subLabel = rec.name || rec.subjectName || ''; document.getElementById('form-title').textContent = `แก้ไข: ${rec.code} ${_subLabel}`;
+
+  const _subLabel = rec.name || rec.subjectName || '';
+  document.getElementById('form-title').textContent = `แก้ไข: ${rec.code} ${_subLabel}`;
   document.getElementById('btn-save').style.display   = 'none';
   document.getElementById('btn-update').style.display = '';
   document.getElementById('btn-delete').style.display = '';
@@ -880,23 +840,15 @@ function processPaste() {
 // ============================================================
 // DROPDOWNS & SETTINGS
 // ============================================================
-function renderTeacherDropdowns() {
-  const sel = document.getElementById('f-teacher'), val = sel.value;
-  sel.innerHTML = '<option value="">-- เลือกครู --</option>';
-  state.teachers.forEach(t => sel.innerHTML += `<option value="${t}">${t}</option>`);
-  if (val) sel.value = val;
-}
+function renderTeacherDropdowns() { /* ไม่ใช้ — ครูกรอกเอง */ }
+function renderTeacherTags() { /* ไม่ใช้ */ }
+function saveTotalStudents() { /* hardcode 142 */ }
+function updateTotalStudentsDisplay() { /* hardcode 142 */ }
 function renderGroupDropdowns() {
   const sel = document.getElementById('f-subject-group'), val = sel.value;
   sel.innerHTML = '<option value="">-- เลือกกลุ่มสาระ --</option>';
   state.groups.forEach(g => sel.innerHTML += `<option value="${g}">${g}</option>`);
   if (val) sel.value = val;
-}
-function renderTeacherTags() {
-  // แสดงแบบ read-only (แก้ไขได้ใน Sheet โดยตรง)
-  document.getElementById('teacher-tags').innerHTML = state.teachers.length
-    ? state.teachers.map(t => `<div class="tag">👨‍🏫 ${t}</div>`).join('')
-    : '<span style="font-size:0.8rem;color:var(--text-muted);">ยังไม่มีข้อมูล — กด "โหลดชื่อครูใหม่"</span>';
 }
 function renderGroupTags() {
   document.getElementById('group-tags').innerHTML = state.groups.map((g,i) =>
@@ -997,9 +949,9 @@ function getMSStudents() {
 
 function renderStats() {
   const ms = getMSStudents();
-  const schoolTotal = state.totalStudents || 0;
+  const schoolTotal = TOTAL_STUDENTS;
   const msCount = ms.length;
-  const pctMs = schoolTotal > 0 ? (msCount / schoolTotal * 100).toFixed(1) : '-';
+  const pctMs = (msCount / schoolTotal * 100).toFixed(1);
   document.getElementById('stats-summary').innerHTML = `
     <div class="stat-card"><div class="val">${state.records.length}</div><div class="lbl">รายวิชาทั้งหมด</div></div>
     <div class="stat-card"><div class="val">${schoolTotal || '-'}</div><div class="lbl">นักเรียนทั้งโรงเรียน</div></div>
@@ -1036,9 +988,9 @@ function buildChart(canvasId, dataMap) {
 // ============================================================
 function generatePrintPreview() {
   const ms = getMSStudents();
-  const schoolTotal = state.totalStudents || 0;
+  const schoolTotal = TOTAL_STUDENTS;
   const msCount = ms.length;
-  const pctMs = schoolTotal > 0 ? (msCount / schoolTotal * 100).toFixed(1) : '-';
+  const pctMs = (msCount / schoolTotal * 100).toFixed(1);
   let html = `<div style="font-family:'Sarabun',sans-serif;color:#1e2d4a;max-width:900px;margin:0 auto;">
     <div style="text-align:center;margin-bottom:24px;padding-bottom:16px;border-bottom:2px solid #1a56a8;">
       <img src="https://nonthaphathr.github.io/uploadimg/logoschool.png" style="height:70px;margin-bottom:8px;" onerror="this.style.display='none'">
@@ -1099,7 +1051,7 @@ function printDoc() {
 function exportExcel() {
   const wb = XLSX.utils.book_new();
   const summary = [['รหัสวิชา','ชื่อวิชา','กลุ่มสาระ','ระดับชั้น','ครูผู้สอน','จำนวน มส. (คน)']];
-  const schoolTotalEx = state.totalStudents || 0;
+  const schoolTotalEx = TOTAL_STUDENTS;
   const totalMsEx = state.records.reduce((a,r) => a + r.students.length, 0);
   state.records.forEach(r => {
     summary.push([r.code,r.name||r.subjectName||'',r.group,r.level,r.teacher,r.students.length]);
