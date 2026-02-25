@@ -168,17 +168,6 @@
 
   <!-- TAB 1 -->
   <div id="tab-content-input" class="tab-content active">
-    <div class="card">
-      <div class="flex-between card-title" style="margin-bottom:12px;">
-        <span>📋 รายการที่บันทึกแล้ว</span>
-        <div style="display:flex;gap:8px;">
-          <button class="btn btn-outline btn-sm" onclick="loadFromSheets()">🔄 โหลดจาก Sheets</button>
-          <button class="btn btn-primary btn-sm" onclick="startNewRecord()">➕ เพิ่มรายการใหม่</button>
-        </div>
-      </div>
-      <div id="record-list"><div class="empty-state"><div class="icon">⏳</div><p>กำลังโหลดข้อมูล...</p></div></div>
-    </div>
-
     <div class="card" id="form-card">
       <div class="card-title">✏️ <span id="form-title">กรอกข้อมูลรายวิชา</span></div>
       <div class="form-grid">
@@ -224,6 +213,17 @@
         <button id="btn-update" class="btn btn-accent" onclick="updateRecord()" style="display:none;">✏️ อัปเดตรายการ</button>
         <button id="btn-delete" class="btn btn-danger" onclick="deleteRecord()" style="display:none;">🗑️ ลบรายการนี้</button>
       </div>
+    </div>
+
+    <div class="card">
+      <div class="flex-between card-title" style="margin-bottom:12px;">
+        <span>📋 รายการที่บันทึกแล้ว</span>
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-outline btn-sm" onclick="loadFromSheets()">🔄 โหลดจาก Sheets</button>
+          <button class="btn btn-primary btn-sm" onclick="startNewRecord()">➕ เพิ่มรายการใหม่</button>
+        </div>
+      </div>
+      <div id="record-list"><div class="empty-state"><div class="icon">⏳</div><p>กำลังโหลดข้อมูล...</p></div></div>
     </div>
   </div>
 
