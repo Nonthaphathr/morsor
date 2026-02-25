@@ -187,7 +187,10 @@
   <button class="nav-btn" onclick="switchTab('stats')" id="tab-stats">📊 สรุปสถิติ</button>
   <button class="nav-btn" onclick="switchTab('print')" id="tab-print">🖨️ สั่งพิมพ์</button>
   <button class="nav-btn" onclick="switchTab('settings')" id="tab-settings">⚙️ ตั้งค่า</button>
-  <button class="nav-btn" onclick="exportExcel()" style="margin-left:auto;color:var(--success);font-weight:600;">📊 Export Excel</button>
+  <div style="margin-left:auto;display:flex;align-items:center;gap:4px;">
+    <button class="nav-btn" onclick="printDoc()" style="color:#0f3d7a;font-weight:600;">🖨️ พิมพ์เอกสาร</button>
+    <button class="nav-btn" onclick="exportExcel()" style="color:var(--success);font-weight:600;">📊 Export Excel</button>
+  </div>
 </nav>
 
 <div class="main">
