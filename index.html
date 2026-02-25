@@ -132,6 +132,30 @@
   .loading-msg { color: #fff; font-size: 1rem; font-weight: 500; font-family: 'Sarabun', sans-serif; }
   @keyframes spin { to { transform: rotate(360deg); } }
 
+  .top5-table { width:100%; border-collapse:collapse; font-size:0.86rem; }
+  .top5-table th { background: var(--primary); color:#fff; padding:8px 10px; text-align:left; font-weight:600; font-size:0.8rem; }
+  .top5-table th:first-child { border-radius:6px 0 0 0; } .top5-table th:last-child { border-radius:0 6px 0 0; }
+  .top5-table td { padding:8px 10px; border-bottom:1px solid var(--border); vertical-align:middle; }
+  .top5-table tr:last-child td { border-bottom:none; }
+  .top5-table tr:hover td { background:var(--accent-light); }
+  .rank-badge { display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:50%;font-weight:700;font-size:0.82rem;flex-shrink:0; }
+  .rank-1 { background:#fbbf24;color:#78350f; }
+  .rank-2 { background:#9ca3af;color:#1f2937; }
+  .rank-3 { background:#d97706;color:#fff; }
+  .rank-other { background:#e0f2fe;color:#1a56a8; }
+  @media (max-width:700px) { #top5-grid { grid-template-columns:1fr !important; } }
+
+  /* print student table */
+  .ms-student-table { width:100%;border-collapse:collapse;font-size:0.85rem; margin-top:8px; }
+  .ms-student-table th { background:var(--primary);color:#fff;padding:8px 10px;text-align:left;font-weight:600;font-size:0.8rem; }
+  .ms-student-table td { padding:7px 10px;border-bottom:1px solid var(--border); }
+  .ms-student-table tr:nth-child(even) td { background:var(--surface2); }
+  .ms-student-table tr:hover td { background:var(--accent-light); }
+  .freq-badge { display:inline-block;padding:2px 10px;border-radius:20px;font-weight:700;font-size:0.82rem; }
+  .freq-high { background:#fee2e2;color:#991b1b; }
+  .freq-mid  { background:#fef9c3;color:#854d0e; }
+  .freq-low  { background:#d1fae5;color:#065f46; }
+
   @media (max-width: 600px) {
     .header { padding: 12px 16px; } .sync-indicator { display: none; }
     .main { padding: 16px 10px; } .nav { padding: 0 8px; }
@@ -253,6 +277,17 @@
   <!-- TAB 2 -->
   <div id="tab-content-stats" class="tab-content">
     <div class="stats-grid" id="stats-summary"></div>
+    <!-- TOP 5 TABLES -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px;" id="top5-grid">
+      <div class="card" style="margin-bottom:0;">
+        <div class="card-title">🏆 วิชาที่มีนักเรียน มส. มากสุด 5 อันดับ</div>
+        <div id="top5-subjects"></div>
+      </div>
+      <div class="card" style="margin-bottom:0;">
+        <div class="card-title">👤 นักเรียนที่ติด มส. มากสุด 5 อันดับ</div>
+        <div id="top5-students"></div>
+      </div>
+    </div>
     <div class="card"><div class="card-title">📊 กราฟนักเรียน มส. แยกตามรายวิชา</div><div class="chart-wrap"><canvas id="chart-subject"></canvas></div></div>
     <div class="card"><div class="card-title">📊 กราฟนักเรียน มส. แยกตามกลุ่มสาระ</div><div class="chart-wrap"><canvas id="chart-group"></canvas></div></div>
     <div class="card"><div class="card-title">📊 กราฟนักเรียน มส. แยกตามระดับชั้น</div><div class="chart-wrap"><canvas id="chart-level"></canvas></div></div>
@@ -260,6 +295,17 @@
 
   <!-- TAB 3 -->
   <div id="tab-content-print" class="tab-content">
+    <!-- ตารางรายชื่อนักเรียนรวม (นับความถี่) -->
+    <div class="card">
+      <div class="flex-between" style="margin-bottom:12px;">
+        <div class="card-title" style="margin-bottom:0">📋 รายชื่อนักเรียนที่ติด มส. (รวมทุกวิชา)</div>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <input type="text" class="form-control" id="student-table-search" placeholder="🔍 ค้นหาชื่อ..." style="width:180px;font-size:0.85rem;" oninput="renderStudentFreqTable()">
+        </div>
+      </div>
+      <div id="student-freq-table-wrap"></div>
+    </div>
+    <!-- เอกสารพิมพ์รายวิชา -->
     <div class="card">
       <div class="flex-between" style="margin-bottom:16px;">
         <div class="card-title" style="margin-bottom:0">🖨️ เอกสารสรุปข้อมูล มส.</div>
@@ -973,7 +1019,7 @@ function switchTab(tab) {
   document.getElementById('tab-content-' + tab).classList.add('active');
   document.getElementById('tab-' + tab).classList.add('active');
   if (tab === 'stats') renderStats();
-  if (tab === 'print') generatePrintPreview();
+  if (tab === 'print') { renderStudentFreqTable(); generatePrintPreview(); }
   if (tab === 'settings') showSettingsLock();
   else settingsUnlocked = false;
 }
@@ -1043,6 +1089,7 @@ function renderStats() {
     <div class="stat-card danger"><div class="val">${msCount}</div><div class="lbl">นักเรียนที่ติด มส.</div></div>
     <div class="stat-card warn"><div class="val">${pctMs}%</div><div class="lbl">ร้อยละ มส. (จากทั้งโรงเรียน)</div></div>
     <div class="stat-card ok"><div class="val">${schoolTotal ? schoolTotal - msCount : '-'}</div><div class="lbl">ไม่ติด มส.</div></div>`;
+
   const subjectMap = {}, groupMap = {}, levelMap = {};
   ms.forEach(s => {
     const k = s.code + ' ' + s.subjectName;
@@ -1056,6 +1103,123 @@ function renderStats() {
   chartSubject = buildChart('chart-subject', subjectMap);
   chartGroup   = buildChart('chart-group',   groupMap);
   chartLevel   = buildChart('chart-level',   levelMap);
+
+  renderTop5(ms, subjectMap);
+}
+
+// ============================================================
+// TOP 5
+// ============================================================
+function renderTop5(ms, subjectMap) {
+  // Top 5 วิชา
+  const top5sub = Object.entries(subjectMap)
+    .sort((a,b) => b[1]-a[1]).slice(0,5);
+  const subEl = document.getElementById('top5-subjects');
+  if (!top5sub.length) { subEl.innerHTML = '<div class="empty-state" style="padding:20px"><p>ยังไม่มีข้อมูล</p></div>'; }
+  else {
+    subEl.innerHTML = `<table class="top5-table">
+      <thead><tr><th style="width:36px">อันดับ</th><th>รหัส / ชื่อวิชา</th><th style="width:70px;text-align:center">มส.</th></tr></thead>
+      <tbody>${top5sub.map(([subj, cnt], i) => {
+        const rank = i+1;
+        const rc = rank===1?'rank-1':rank===2?'rank-2':rank===3?'rank-3':'rank-other';
+        // หา teacher จาก records
+        const rec = state.records.find(r => (r.code+' '+(r.name||r.subjectName||'')) === subj);
+        const teacher = rec ? rec.teacher : '';
+        return `<tr>
+          <td style="text-align:center"><span class="rank-badge ${rc}">${rank}</span></td>
+          <td><strong>${subj}</strong>${teacher?`<div style="font-size:0.78rem;color:var(--text-muted)">👨‍🏫 ${teacher}</div>`:''}</td>
+          <td style="text-align:center"><span class="freq-badge freq-high">${cnt} คน</span></td>
+        </tr>`;
+      }).join('')}</tbody>
+    </table>`;
+  }
+
+  // Top 5 นักเรียน (นับความถี่ชื่อซ้ำ)
+  const studentMap = {};
+  ms.forEach(s => {
+    const key = `${s.prefix}${s.fullname}`.trim();
+    if (!studentMap[key]) studentMap[key] = { name: `${s.prefix} ${s.fullname}`.trim(), count: 0, subjects: [] };
+    studentMap[key].count++;
+    studentMap[key].subjects.push(s.code);
+  });
+  const top5stu = Object.values(studentMap).sort((a,b) => b.count-a.count).slice(0,5);
+  const stuEl = document.getElementById('top5-students');
+  if (!top5stu.length) { stuEl.innerHTML = '<div class="empty-state" style="padding:20px"><p>ยังไม่มีข้อมูล</p></div>'; }
+  else {
+    stuEl.innerHTML = `<table class="top5-table">
+      <thead><tr><th style="width:36px">อันดับ</th><th>ชื่อ-สกุล</th><th style="width:80px;text-align:center">ติด มส.</th></tr></thead>
+      <tbody>${top5stu.map((s, i) => {
+        const rank = i+1;
+        const rc = rank===1?'rank-1':rank===2?'rank-2':rank===3?'rank-3':'rank-other';
+        const freqCls = s.count >= 4 ? 'freq-high' : s.count >= 2 ? 'freq-mid' : 'freq-low';
+        return `<tr>
+          <td style="text-align:center"><span class="rank-badge ${rc}">${rank}</span></td>
+          <td><strong>${s.name}</strong><div style="font-size:0.78rem;color:var(--text-muted)">${s.subjects.join(', ')}</div></td>
+          <td style="text-align:center"><span class="freq-badge ${freqCls}">${s.count} วิชา</span></td>
+        </tr>`;
+      }).join('')}</tbody>
+    </table>`;
+  }
+}
+
+// ============================================================
+// STUDENT FREQUENCY TABLE (Print Tab)
+// ============================================================
+function getStudentFreqData() {
+  const map = {};
+  state.records.forEach(r => {
+    r.students.forEach(s => {
+      const key = `${s.prefix}${s.fullname}`.trim();
+      if (!map[key]) map[key] = { prefix: s.prefix, fullname: s.fullname, count: 0, entries: [] };
+      map[key].count++;
+      map[key].entries.push({ code: r.code, subjectName: r.name || r.subjectName || '', teacher: r.teacher, level: r.level });
+    });
+  });
+  return Object.values(map).sort((a,b) => {
+    if (b.count !== a.count) return b.count - a.count;
+    return a.fullname.localeCompare(b.fullname, 'th');
+  });
+}
+
+function renderStudentFreqTable() {
+  const wrap = document.getElementById('student-freq-table-wrap');
+  if (!wrap) return;
+  const search = (document.getElementById('student-table-search')?.value || '').trim().toLowerCase();
+  let data = getStudentFreqData();
+  if (search) data = data.filter(d => `${d.prefix}${d.fullname}`.toLowerCase().includes(search));
+
+  if (!data.length) {
+    wrap.innerHTML = '<div class="empty-state"><div class="icon">📭</div><p>ไม่พบข้อมูล</p></div>';
+    return;
+  }
+
+  // สร้างตาราง expand-on-click
+  wrap.innerHTML = `
+    <div style="font-size:0.8rem;color:var(--text-muted);margin-bottom:8px;">ทั้งหมด ${data.length} คน | คลิกแถวเพื่อดูรายละเอียดวิชา</div>
+    <table class="ms-student-table">
+      <thead><tr>
+        <th style="width:36px">#</th>
+        <th>ชื่อ-สกุล</th>
+        <th style="width:80px;text-align:center">ติด มส.</th>
+        <th>รายวิชา</th>
+      </tr></thead>
+      <tbody>
+        ${data.map((d, i) => {
+          const freqCls = d.count >= 4 ? 'freq-high' : d.count >= 2 ? 'freq-mid' : 'freq-low';
+          const subjectList = d.entries.map(e =>
+            `<span style="display:inline-block;background:#e0f2fe;color:#0f3d7a;border-radius:4px;padding:1px 7px;margin:2px 2px;font-size:0.77rem;">
+              ${e.code} ${e.subjectName} <span style="opacity:0.7;">(${e.teacher})</span>
+            </span>`
+          ).join('');
+          return `<tr>
+            <td style="text-align:center;color:var(--text-muted);font-size:0.8rem;">${i+1}</td>
+            <td><strong>${d.prefix} ${d.fullname}</strong></td>
+            <td style="text-align:center"><span class="freq-badge ${freqCls}">${d.count} วิชา</span></td>
+            <td style="line-height:1.8;">${subjectList}</td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table>`;
 }
 
 function buildChart(canvasId, dataMap) {
