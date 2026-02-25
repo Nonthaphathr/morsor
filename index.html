@@ -187,6 +187,7 @@
   <button class="nav-btn" onclick="switchTab('stats')" id="tab-stats">📊 สรุปสถิติ</button>
   <button class="nav-btn" onclick="switchTab('print')" id="tab-print">🖨️ สั่งพิมพ์</button>
   <button class="nav-btn" onclick="switchTab('settings')" id="tab-settings">⚙️ ตั้งค่า</button>
+  <button class="nav-btn" onclick="exportExcel()" style="margin-left:auto;color:var(--success);font-weight:600;">📊 Export Excel</button>
 </nav>
 
 <div class="main">
@@ -1236,53 +1237,109 @@ function buildChart(canvasId, dataMap) {
 // PRINT
 // ============================================================
 function generatePrintPreview() {
-  const ms = getMSStudents();
   const schoolTotal = TOTAL_STUDENTS;
-  const msCount = ms.length;
-  const pctMs = (msCount / schoolTotal * 100).toFixed(1);
-  let html = `<div style="font-family:'Sarabun',sans-serif;color:#1e2d4a;max-width:900px;margin:0 auto;">
-    <div style="text-align:center;margin-bottom:24px;padding-bottom:16px;border-bottom:2px solid #1a56a8;">
-      <img src="https://nonthaphathr.github.io/uploadimg/logoschool.png" style="height:70px;margin-bottom:8px;" onerror="this.style.display='none'">
-      <h2 style="font-size:1.2rem;color:#1a56a8;margin:0;">รายงานสรุปข้อมูลนักเรียนที่มีเวลาเรียนไม่ถึงร้อยละ 80</h2>
-      <p style="font-size:0.88rem;color:#5a7099;margin-top:4px;">ปีการศึกษา ${state.year} | โรงเรียนกระดุมทองวิทยา | ${new Date().toLocaleDateString('th-TH',{year:'numeric',month:'long',day:'numeric'})}</p>
-    </div>
-    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px;">
-      ${[['รายวิชาทั้งหมด',state.records.length,'#1a56a8'],['นักเรียนทั้งโรงเรียน',schoolTotal||'-','#0f3d7a'],['นักเรียน มส.',msCount,'#ef4444'],['ร้อยละ มส.',pctMs+'%','#f59e0b']]
-        .map(([l,v,c])=>`<div style="background:#f0f6ff;border:1px solid #c7d9f5;border-radius:10px;padding:14px;text-align:center;"><div style="font-size:1.8rem;font-weight:700;color:${c};">${v}</div><div style="font-size:0.8rem;color:#5a7099;">${l}</div></div>`).join('')}
+  const msCount     = state.records.reduce((a,r) => a + r.students.length, 0);
+  const pctMs       = (msCount / schoolTotal * 100).toFixed(1);
+  const dateStr     = new Date().toLocaleDateString('th-TH',{year:'numeric',month:'long',day:'numeric'});
+
+  // ── HEADER ────────────────────────────────────────────────
+  const headerHtml = `
+    <div style="text-align:center;margin-bottom:20px;padding-bottom:14px;border-bottom:2px solid #1a56a8;">
+      <img src="https://nonthaphathr.github.io/uploadimg/logoschool.png" style="height:64px;margin-bottom:6px;" onerror="this.style.display='none'">
+      <h2 style="font-size:1.15rem;color:#1a56a8;margin:0;">รายงานสรุปข้อมูลนักเรียนที่มีเวลาเรียนไม่ถึงร้อยละ 80</h2>
+      <p style="font-size:0.85rem;color:#5a7099;margin-top:3px;">ปีการศึกษา ${state.year} | โรงเรียนกระดุมทองวิทยา | ${dateStr}</p>
     </div>`;
+
+  // ── STATS SUMMARY ─────────────────────────────────────────
+  const summaryHtml = `
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:22px;">
+      ${[['รายวิชาทั้งหมด',state.records.length,'#1a56a8'],
+         ['นักเรียนทั้งโรงเรียน',schoolTotal,'#0f3d7a'],
+         ['นักเรียน มส.',msCount,'#ef4444'],
+         ['ร้อยละ มส.',pctMs+'%','#f59e0b']]
+        .map(([l,v,c])=>`<div style="background:#f0f6ff;border:1px solid #c7d9f5;border-radius:8px;padding:12px;text-align:center;">
+          <div style="font-size:1.7rem;font-weight:700;color:${c};">${v}</div>
+          <div style="font-size:0.78rem;color:#5a7099;">${l}</div>
+        </div>`).join('')}
+    </div>`;
+
+  // ── PAGE 1: รายวิชา ────────────────────────────────────────
+  let page1 = '';
   state.records.forEach(r => {
     if (!r.students.length) return;
-    html += `<div style="margin-bottom:20px;border:1px solid #c7d9f5;border-radius:10px;overflow:hidden;">
-      <div style="background:linear-gradient(135deg,#0f3d7a,#1a56a8);color:#fff;padding:10px 16px;">
-        <strong>${r.code} ${r.name || r.subjectName || ''}</strong>
-        <span style="margin-left:12px;font-size:0.82rem;opacity:0.85;">${r.level} | ${r.teacher} | ${r.group}</span>
-        <span style="float:right;background:#ef4444;padding:2px 10px;border-radius:12px;font-size:0.82rem;">มส. ${r.students.length} คน</span>
-      </div>
-      <table style="width:100%;border-collapse:collapse;font-size:0.85rem;">
-        <thead><tr style="background:#e0f2fe;">
-          <th style="padding:7px 10px;border-bottom:1px solid #c7d9f5;text-align:center;width:40px">#</th>
-          <th style="padding:7px 10px;border-bottom:1px solid #c7d9f5;">ชื่อ-สกุล</th>
-          <th style="padding:7px 10px;border-bottom:1px solid #c7d9f5;text-align:center;width:70px">มาเรียน</th>
-          <th style="padding:7px 10px;border-bottom:1px solid #c7d9f5;text-align:center;width:70px">ทั้งหมด</th>
-          <th style="padding:7px 10px;border-bottom:1px solid #c7d9f5;text-align:center;width:70px">ร้อยละ</th>
-          <th style="padding:7px 10px;border-bottom:1px solid #c7d9f5;text-align:center;width:70px">สถานะ</th>
+    page1 += `
+      <div style="margin-bottom:18px;border:1px solid #c7d9f5;border-radius:8px;overflow:hidden;break-inside:avoid;">
+        <div style="background:linear-gradient(135deg,#0f3d7a,#1a56a8);color:#fff;padding:9px 14px;display:flex;justify-content:space-between;align-items:center;">
+          <span><strong>${r.code} ${r.name||r.subjectName||''}</strong>
+            <span style="font-size:0.8rem;opacity:0.85;margin-left:10px;">${r.level} | ${r.teacher} | ${r.group}</span>
+          </span>
+          <span style="background:#ef4444;padding:2px 10px;border-radius:10px;font-size:0.8rem;white-space:nowrap;">มส. ${r.students.length} คน</span>
+        </div>
+        <table style="width:100%;border-collapse:collapse;font-size:0.83rem;">
+          <thead><tr style="background:#e0f2fe;">
+            <th style="padding:6px 10px;border-bottom:1px solid #c7d9f5;text-align:center;width:36px">#</th>
+            <th style="padding:6px 10px;border-bottom:1px solid #c7d9f5;">ชื่อ-สกุล</th>
+            <th style="padding:6px 10px;border-bottom:1px solid #c7d9f5;text-align:center;width:70px">สถานะ</th>
+          </tr></thead>
+          <tbody>${r.students.map((s,i)=>`
+            <tr style="background:${i%2===0?'#fff':'#f8faff'}">
+              <td style="padding:6px 10px;border-bottom:1px solid #f0f6ff;text-align:center;">${i+1}</td>
+              <td style="padding:6px 10px;border-bottom:1px solid #f0f6ff;">${s.prefix} ${s.fullname}</td>
+              <td style="padding:6px 10px;border-bottom:1px solid #f0f6ff;text-align:center;">
+                <span style="background:#fee2e2;color:#991b1b;padding:2px 8px;border-radius:10px;font-weight:600;font-size:0.78rem;">มส.</span>
+              </td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>`;
+  });
+
+  // ── PAGE 2: รายชื่อนักเรียนรวม (นับความถี่) ────────────────
+  const freqData = getStudentFreqData();
+  const page2Header = `
+    <div style="page-break-before:always;padding-top:8px;">
+      <div style="text-align:center;margin-bottom:16px;padding-bottom:12px;border-bottom:2px solid #1a56a8;">
+        <h2 style="font-size:1.1rem;color:#1a56a8;margin:0;">รายชื่อนักเรียนที่ติด มส. รวมทุกรายวิชา</h2>
+        <p style="font-size:0.82rem;color:#5a7099;margin-top:3px;">ปีการศึกษา ${state.year} | จำนวนนักเรียนที่มีชื่อติด มส. ทั้งสิ้น ${freqData.length} คน</p>
+      </div>`;
+
+  const freqTableRows = freqData.map((d, i) => {
+    const freqColor = d.count >= 4 ? '#991b1b' : d.count >= 2 ? '#92400e' : '#065f46';
+    const freqBg    = d.count >= 4 ? '#fee2e2' : d.count >= 2 ? '#fef9c3' : '#d1fae5';
+    const subjectList = d.entries.map(e =>
+      `<span style="display:inline-block;background:#e0f2fe;color:#0f3d7a;border-radius:3px;padding:1px 6px;margin:1px 2px;font-size:0.75rem;">${e.code} ${e.subjectName} <span style="opacity:0.65;">(${e.teacher})</span></span>`
+    ).join('');
+    return `<tr style="background:${i%2===0?'#fff':'#f8faff'}">
+      <td style="padding:6px 10px;border-bottom:1px solid #f0f6ff;text-align:center;color:#5a7099;font-size:0.8rem;">${i+1}</td>
+      <td style="padding:6px 10px;border-bottom:1px solid #f0f6ff;font-weight:600;">${d.prefix} ${d.fullname}</td>
+      <td style="padding:6px 10px;border-bottom:1px solid #f0f6ff;text-align:center;">
+        <span style="background:${freqBg};color:${freqColor};padding:2px 10px;border-radius:10px;font-weight:700;font-size:0.82rem;">${d.count} วิชา</span>
+      </td>
+      <td style="padding:6px 10px;border-bottom:1px solid #f0f6ff;line-height:1.7;">${subjectList}</td>
+    </tr>`;
+  }).join('');
+
+  const freqTable = `
+      <table style="width:100%;border-collapse:collapse;font-size:0.83rem;">
+        <thead><tr style="background:linear-gradient(135deg,#0f3d7a,#1a56a8);color:#fff;">
+          <th style="padding:8px 10px;text-align:center;width:36px">#</th>
+          <th style="padding:8px 10px;">ชื่อ-สกุล</th>
+          <th style="padding:8px 10px;text-align:center;width:80px">ติด มส.</th>
+          <th style="padding:8px 10px;">รายวิชา (รหัส ชื่อวิชา ครูผู้สอน)</th>
         </tr></thead>
-        <tbody>${r.students.map((s,i)=>{
-          const pct = s.total > 0 ? (s.attended/s.total*100).toFixed(1) : '-';
-          const pctNum = s.total > 0 ? s.attended/s.total*100 : 100;
-          return `<tr style="background:${i%2===0?'#fff':'#f8faff'}">
-          <td style="padding:7px 10px;border-bottom:1px solid #f0f6ff;text-align:center;">${i+1}</td>
-          <td style="padding:7px 10px;border-bottom:1px solid #f0f6ff;">${s.prefix} ${s.fullname}</td>
-          <td style="padding:7px 10px;border-bottom:1px solid #f0f6ff;text-align:center;">${s.attended||'-'}</td>
-          <td style="padding:7px 10px;border-bottom:1px solid #f0f6ff;text-align:center;">${s.total||'-'}</td>
-          <td style="padding:7px 10px;border-bottom:1px solid #f0f6ff;text-align:center;color:${pctNum<80?'#dc2626':'#065f46'};font-weight:600;">${pct}%</td>
-          <td style="padding:7px 10px;border-bottom:1px solid #f0f6ff;text-align:center;"><span style="background:#fee2e2;color:#991b1b;padding:2px 8px;border-radius:12px;font-weight:600;">มส.</span></td>
-        </tr>`;
-        }).join('')}</tbody>
+        <tbody>${freqTableRows}</tbody>
       </table>
     </div>`;
-  });
-  html += `<div style="text-align:right;font-size:0.8rem;color:#5a7099;margin-top:16px;">พิมพ์โดย: ครูยุพา ทองคำ | งานวัดผลและประเมินผล</div></div>`;
+
+  // ── FOOTER ─────────────────────────────────────────────────
+  const footer = `<div style="text-align:right;font-size:0.78rem;color:#5a7099;margin-top:18px;padding-top:10px;border-top:1px solid #e2eaf5;">
+    พิมพ์โดย: ครูยุพา ทองคำ | งานวัดผลและประเมินผล | ${dateStr}
+  </div>`;
+
+  const html = `<div style="font-family:'Sarabun',sans-serif;color:#1e2d4a;max-width:900px;margin:0 auto;">
+    ${headerHtml}${summaryHtml}${page1}${page2Header}${freqTable}${footer}
+  </div>`;
+
   document.getElementById('print-preview-area').innerHTML = html;
 }
 
@@ -1290,7 +1347,19 @@ function printDoc() {
   generatePrintPreview();
   const content = document.getElementById('print-preview-area').innerHTML;
   const win = window.open('', '_blank');
-  win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&display=swap" rel="stylesheet"><title>รายงาน มส. ปีการศึกษา ${state.year}</title><style>body{font-family:'Sarabun',sans-serif;padding:20px;}@media print{@page{margin:15mm;}}</style></head><body>${content}<script>window.onload=()=>window.print();<\/script></body></html>`);
+  win.document.write(`<!DOCTYPE html><html lang="th"><head>
+    <meta charset="UTF-8">
+    <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&display=swap" rel="stylesheet">
+    <title>รายงาน มส. ปีการศึกษา ${state.year}</title>
+    <style>
+      body { font-family:'Sarabun',sans-serif; padding:16px; color:#1e2d4a; }
+      @media print {
+        @page { margin:12mm; size:A4; }
+        body { padding:0; }
+        .page-break { page-break-before:always; }
+      }
+    </style>
+  </head><body>${content}<script>window.onload=()=>window.print();<\/script></body></html>`);
   win.document.close();
 }
 
