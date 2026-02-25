@@ -1135,14 +1135,8 @@ function renderTop5(ms, subjectMap) {
     </table>`;
   }
 
-  // Top 5 นักเรียน (นับความถี่ชื่อซ้ำ)
-  const studentMap = {};
-  ms.forEach(s => {
-    const key = `${s.prefix}${s.fullname}`.trim();
-    if (!studentMap[key]) studentMap[key] = { name: `${s.prefix} ${s.fullname}`.trim(), count: 0, subjects: [] };
-    studentMap[key].count++;
-    studentMap[key].subjects.push(s.code);
-  });
+  // Top 5 นักเรียน (นับความถี่ชื่อซ้ำ — ใช้ normalized key)
+  const studentMap = buildStudentFreqMap(ms);
   const top5stu = Object.values(studentMap).sort((a,b) => b.count-a.count).slice(0,5);
   const stuEl = document.getElementById('top5-students');
   if (!top5stu.length) { stuEl.innerHTML = '<div class="empty-state" style="padding:20px"><p>ยังไม่มีข้อมูล</p></div>'; }
@@ -1164,21 +1158,85 @@ function renderTop5(ms, subjectMap) {
 }
 
 // ============================================================
-// STUDENT FREQUENCY TABLE (Print Tab)
+// NAME NORMALIZATION — แก้ปัญหาชื่อซ้ำซ้อนรูปแบบต่างกัน
 // ============================================================
+
+// คำนำหน้าทั้งหมดที่จะ strip ออกก่อนทำ key
+const PREFIXES = ['เด็กชาย','เด็กหญิง','นางสาว','นาย','นาง','ด.ช.','ด.ญ.','ด.ช','ด.ญ'];
+
+/**
+ * normalizeStudentKey(prefix, fullname)
+ * → strip คำนำหน้า + collapse whitespace + trim
+ * → ใช้เป็น key รวม "เด็กชาย สมชาย ใจดี" และ "นาย สมชาย ใจดี" เป็นคนเดียวกัน
+ */
+function normalizeStudentKey(prefix, fullname) {
+  let raw = ((prefix || '') + ' ' + (fullname || '')).trim();
+  // strip คำนำหน้าที่ขึ้นต้น
+  for (const p of PREFIXES) {
+    if (raw.startsWith(p)) { raw = raw.slice(p.length).trim(); break; }
+  }
+  // collapse whitespace หลายช่องเป็นช่องเดียว
+  return raw.replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * fuzzyKey(str) — เอาเฉพาะตัวอักษรไทย ไม่มีช่องว่าง
+ * ใช้ detect "สมชาย ใจดี" vs "สมชายใจดี" หรือ typo whitespace
+ */
+function fuzzyKey(str) {
+  return str.replace(/[^ก-๙]/g, '').toLowerCase();
+}
+
+/**
+ * getStudentFreqData() — รวมข้อมูลนักเรียนทุกคน
+ * key = normalizeStudentKey → ไม่แยกคำนำหน้า, ไม่แยก whitespace ซ้ำ
+ * แนบ fuzzyKey เพื่อ detect ชื่อคล้ายกัน
+ */
 function getStudentFreqData() {
   const map = {};
   state.records.forEach(r => {
     r.students.forEach(s => {
-      const key = `${s.prefix}${s.fullname}`.trim();
-      if (!map[key]) map[key] = { prefix: s.prefix, fullname: s.fullname, count: 0, entries: [] };
-      map[key].count++;
-      map[key].entries.push({ code: r.code, subjectName: r.name || r.subjectName || '', teacher: r.teacher, level: r.level });
+      const normKey  = normalizeStudentKey(s.prefix, s.fullname);
+      const fKey     = fuzzyKey(normKey);
+      if (!normKey) return;
+      if (!map[normKey]) {
+        map[normKey] = {
+          normKey,
+          fKey,
+          displayPrefix: s.prefix,
+          displayName:   normKey,
+          count: 0,
+          entries: [],
+          rawNames: new Set()
+        };
+      }
+      map[normKey].count++;
+      map[normKey].entries.push({
+        code: r.code,
+        subjectName: r.name || r.subjectName || '',
+        teacher: r.teacher,
+        level: r.level
+      });
+      // เก็บชื่อดิบทุกรูปแบบที่เคยเจอ
+      map[normKey].rawNames.add(`${s.prefix} ${s.fullname}`.trim());
     });
   });
-  return Object.values(map).sort((a,b) => {
+
+  const list = Object.values(map).map(d => ({ ...d, rawNames: [...d.rawNames] }));
+
+  // ── หา fuzzy duplicates (normKey ต่างกัน แต่ fuzzyKey เหมือนกัน) ──
+  const fuzzyGroups = {};
+  list.forEach(d => {
+    if (!fuzzyGroups[d.fKey]) fuzzyGroups[d.fKey] = [];
+    fuzzyGroups[d.fKey].push(d.normKey);
+  });
+  list.forEach(d => {
+    d.fuzzyDupes = fuzzyGroups[d.fKey].filter(k => k !== d.normKey);
+  });
+
+  return list.sort((a, b) => {
     if (b.count !== a.count) return b.count - a.count;
-    return a.fullname.localeCompare(b.fullname, 'th');
+    return a.normKey.localeCompare(b.normKey, 'th');
   });
 }
 
@@ -1187,40 +1245,67 @@ function renderStudentFreqTable() {
   if (!wrap) return;
   const search = (document.getElementById('student-table-search')?.value || '').trim().toLowerCase();
   let data = getStudentFreqData();
-  if (search) data = data.filter(d => `${d.prefix}${d.fullname}`.toLowerCase().includes(search));
+  if (search) data = data.filter(d => d.normKey.toLowerCase().includes(search) ||
+    d.rawNames.some(n => n.toLowerCase().includes(search)));
 
   if (!data.length) {
     wrap.innerHTML = '<div class="empty-state"><div class="icon">📭</div><p>ไม่พบข้อมูล</p></div>';
     return;
   }
 
-  // สร้างตาราง expand-on-click
-  wrap.innerHTML = `
-    <div style="font-size:0.8rem;color:var(--text-muted);margin-bottom:8px;">ทั้งหมด ${data.length} คน | คลิกแถวเพื่อดูรายละเอียดวิชา</div>
+  const dupeCount = data.filter(d => d.fuzzyDupes.length > 0).length;
+  const dupeWarning = dupeCount > 0
+    ? `<div style="background:#fef9c3;border:1px solid #fbbf24;border-radius:6px;padding:8px 14px;margin-bottom:10px;font-size:0.82rem;color:#92400e;">
+        ⚠️ พบ <strong>${dupeCount} รายการ</strong> ที่อาจเป็นนักเรียนคนเดียวกัน (ชื่อใกล้เคียง) — แถวที่มีไอคอน ⚠️ ควรตรวจสอบ
+       </div>`
+    : '';
+
+  wrap.innerHTML = dupeWarning + `
+    <div style="font-size:0.8rem;color:var(--text-muted);margin-bottom:8px;">ทั้งหมด ${data.length} คน (หลัง normalize ชื่อ)</div>
+    <div style="overflow-x:auto;">
     <table class="ms-student-table">
       <thead><tr>
         <th style="width:36px">#</th>
         <th>ชื่อ-สกุล</th>
         <th style="width:80px;text-align:center">ติด มส.</th>
-        <th>รายวิชา</th>
+        <th>รายวิชา (รหัส / ครูผู้สอน)</th>
       </tr></thead>
       <tbody>
         ${data.map((d, i) => {
           const freqCls = d.count >= 4 ? 'freq-high' : d.count >= 2 ? 'freq-mid' : 'freq-low';
+          const hasDupe = d.fuzzyDupes.length > 0;
           const subjectList = d.entries.map(e =>
-            `<span style="display:inline-block;background:#e0f2fe;color:#0f3d7a;border-radius:4px;padding:1px 7px;margin:2px 2px;font-size:0.77rem;">
-              ${e.code} ${e.subjectName} <span style="opacity:0.7;">(${e.teacher})</span>
-            </span>`
+            `<span style="display:inline-block;background:#e0f2fe;color:#0f3d7a;border-radius:4px;padding:1px 7px;margin:2px 2px;font-size:0.77rem;">${e.code} ${e.subjectName} <span style="opacity:0.7;">(${e.teacher})</span></span>`
           ).join('');
-          return `<tr>
+          // แสดง rawNames ถ้ามีหลายรูปแบบ
+          const rawNote = d.rawNames.length > 1
+            ? `<div style="font-size:0.72rem;color:#9ca3af;margin-top:2px;">พบในชีต: ${d.rawNames.join(' / ')}</div>`
+            : '';
+          const dupeNote = hasDupe
+            ? `<div style="font-size:0.72rem;color:#b45309;margin-top:2px;">⚠️ ชื่อใกล้เคียงกับ: ${d.fuzzyDupes.join(', ')}</div>`
+            : '';
+          return `<tr style="${hasDupe?'background:#fffbeb;':i%2===0?'':'background:var(--surface2);'}">
             <td style="text-align:center;color:var(--text-muted);font-size:0.8rem;">${i+1}</td>
-            <td><strong>${d.prefix} ${d.fullname}</strong></td>
+            <td><strong>${d.displayName}</strong>${rawNote}${dupeNote}</td>
             <td style="text-align:center"><span class="freq-badge ${freqCls}">${d.count} วิชา</span></td>
             <td style="line-height:1.8;">${subjectList}</td>
           </tr>`;
         }).join('')}
       </tbody>
-    </table>`;
+    </table></div>`;
+}
+
+// ── ใช้ normalizeStudentKey ใน renderTop5 ด้วย ──
+function buildStudentFreqMap(ms) {
+  const map = {};
+  ms.forEach(s => {
+    const key = normalizeStudentKey(s.prefix, s.fullname);
+    if (!key) return;
+    if (!map[key]) map[key] = { name: key, count: 0, subjects: [] };
+    map[key].count++;
+    map[key].subjects.push(s.code);
+  });
+  return map;
 }
 
 function buildChart(canvasId, dataMap) {
@@ -1309,9 +1394,12 @@ function generatePrintPreview() {
     const subjectList = d.entries.map(e =>
       `<span style="display:inline-block;background:#e0f2fe;color:#0f3d7a;border-radius:3px;padding:1px 6px;margin:1px 2px;font-size:0.75rem;">${e.code} ${e.subjectName} <span style="opacity:0.65;">(${e.teacher})</span></span>`
     ).join('');
+    const dupeNote = d.fuzzyDupes && d.fuzzyDupes.length > 0
+      ? `<div style="font-size:0.72rem;color:#b45309;">⚠️ ชื่อใกล้เคียง: ${d.fuzzyDupes.join(', ')}</div>`
+      : '';
     return `<tr style="background:${i%2===0?'#fff':'#f8faff'}">
       <td style="padding:6px 10px;border-bottom:1px solid #f0f6ff;text-align:center;color:#5a7099;font-size:0.8rem;">${i+1}</td>
-      <td style="padding:6px 10px;border-bottom:1px solid #f0f6ff;font-weight:600;">${d.prefix} ${d.fullname}</td>
+      <td style="padding:6px 10px;border-bottom:1px solid #f0f6ff;font-weight:600;">${d.displayName}${dupeNote}</td>
       <td style="padding:6px 10px;border-bottom:1px solid #f0f6ff;text-align:center;">
         <span style="background:${freqBg};color:${freqColor};padding:2px 10px;border-radius:10px;font-weight:700;font-size:0.82rem;">${d.count} วิชา</span>
       </td>
