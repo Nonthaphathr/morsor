@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>ระบบสำรวจข้อมูลนักเรียน มส. | โรงเรียนกระดุมทองวิทยา</title>
+<link rel="icon" type="image/png" href="https://nonthaphathr.github.io/uploadimg/logoschool.png">
+<link rel="apple-touch-icon" href="https://nonthaphathr.github.io/uploadimg/logoschool.png">
 <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&family=Prompt:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js"></script>
@@ -161,6 +163,37 @@
     .main { padding: 16px 10px; } .nav { padding: 0 8px; }
     .nav-btn { padding: 12px 14px; font-size: 0.85rem; }
   }
+
+  /* ── AUTOCOMPLETE ── */
+  .ac-wrap { position: relative; }
+  .ac-dropdown {
+    position: absolute; top: calc(100% + 2px); left: 0; right: 0;
+    background: #fff; border: 1.5px solid var(--primary-light);
+    border-radius: var(--radius-sm); box-shadow: 0 8px 24px rgba(26,86,168,0.18);
+    z-index: 9000; max-height: 200px; overflow-y: auto;
+    display: none; font-family: 'Sarabun', sans-serif;
+  }
+  .ac-dropdown.open { display: block; }
+  .ac-item {
+    padding: 7px 12px; font-size: 0.87rem; cursor: pointer;
+    display: flex; align-items: center; gap: 8px; border-bottom: 1px solid #f0f6ff;
+    transition: background 0.12s;
+  }
+  .ac-item:last-child { border-bottom: none; }
+  .ac-item:hover, .ac-item.active { background: var(--accent-light); color: var(--primary-dark); }
+  .ac-item .ac-prefix {
+    font-size: 0.75rem; background: var(--primary-light); color: #fff;
+    border-radius: 4px; padding: 1px 6px; white-space: nowrap; flex-shrink: 0;
+  }
+  .ac-item .ac-highlight { color: var(--primary); font-weight: 700; }
+  .ac-item .ac-count {
+    margin-left: auto; font-size: 0.72rem; color: var(--text-muted);
+    background: #f0f6ff; border-radius: 10px; padding: 1px 7px; white-space: nowrap;
+  }
+  .ac-item .ac-subject { font-size: 0.72rem; color: var(--text-muted); }
+
+  /* teacher autocomplete — on name input */
+  .teacher-ac-wrap { position: relative; }
 </style>
 </head>
 <body>
@@ -208,7 +241,11 @@
               <option value="นาง">นาง</option>
               <option value="นางสาว">นางสาว</option>
             </select>
-            <input type="text" class="form-control" id="f-teacher-fname" placeholder="ชื่อ">
+            <div style="position:relative;">
+              <input type="text" class="form-control" id="f-teacher-fname" placeholder="ชื่อ" autocomplete="off"
+                oninput="teacherAC()" onblur="setTimeout(()=>closeTeacherAC(),200)" onkeydown="teacherACKey(event)">
+              <div class="ac-dropdown" id="teacher-ac-dropdown"></div>
+            </div>
             <input type="text" class="form-control" id="f-teacher-lname" placeholder="นามสกุล">
           </div>
         </div>
@@ -919,7 +956,13 @@ function addStudentRow(prefix = '', fullname = '', attended = '', total = '') {
       <option value="นาย" ${prefix==='นาย'?'selected':''}>นาย</option>
       <option value="นางสาว" ${prefix==='นางสาว'?'selected':''}>นางสาว</option>
     </select></td>
-    <td><input type="text" id="name-${id}" value="${fullname}" placeholder="ชื่อ-นามสกุล"></td>
+    <td style="position:relative;">
+      <div class="ac-wrap">
+        <input type="text" id="name-${id}" value="${fullname}" placeholder="ชื่อ-นามสกุล" autocomplete="off"
+          oninput="studentAC(${id})" onblur="setTimeout(()=>closeStudentAC(${id}),200)" onkeydown="studentACKey(event,${id})">
+        <div class="ac-dropdown" id="ac-${id}"></div>
+      </div>
+    </td>
     <td><input type="number" id="att-${id}" value="${attended}" placeholder="0" min="0" style="text-align:center;" oninput="calcPct(${id})"></td>
     <td><input type="number" id="tot-${id}" value="${total}" placeholder="0" min="0" style="text-align:center;" oninput="calcPct(${id})"></td>
     <td style="text-align:center;"><span id="pct-${id}" class="pct-badge">-</span></td>
@@ -1519,6 +1562,228 @@ function showToast(msg, type = '') {
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => t.classList.remove('show'), 3500);
 }
+
+
+// ============================================================
+// AUTOCOMPLETE — ชื่อนักเรียน & ครูผู้สอน
+// ============================================================
+
+/**
+ * สร้าง student suggestion list จาก records ทั้งหมด
+ * return: Array<{ normKey, displayPrefix, count, subjects }>
+ * เรียงตามความถี่ descending
+ */
+function buildStudentSuggestions() {
+  const map = {};
+  state.records.forEach(r => {
+    r.students.forEach(s => {
+      const key = normalizeStudentKey(s.prefix, s.fullname);
+      if (!key) return;
+      if (!map[key]) map[key] = { key, prefix: s.prefix, name: key, count: 0, subjects: [] };
+      map[key].count++;
+      const subj = (r.code + ' ' + (r.name || r.subjectName || '')).trim();
+      if (!map[key].subjects.includes(subj)) map[key].subjects.push(subj);
+    });
+  });
+  return Object.values(map).sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, 'th'));
+}
+
+/**
+ * สร้าง teacher suggestion list จาก records
+ */
+function buildTeacherSuggestions() {
+  const map = {};
+  state.records.forEach(r => {
+    const t = (r.teacher || '').trim();
+    if (!t) return;
+    if (!map[t]) map[t] = { name: t, count: 0 };
+    map[t].count++;
+  });
+  return Object.values(map).sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, 'th'));
+}
+
+// ── HighLight matching text ──
+function highlightMatch(text, query) {
+  if (!query) return text;
+  const idx = text.toLowerCase().indexOf(query.toLowerCase());
+  if (idx < 0) return text;
+  return text.slice(0, idx)
+    + '<span class="ac-highlight">' + text.slice(idx, idx + query.length) + '</span>'
+    + text.slice(idx + query.length);
+}
+
+// ── AC state per row ──
+let acActiveIdx = {};
+
+// ── STUDENT AUTOCOMPLETE ──
+function studentAC(id) {
+  const input = document.getElementById('name-' + id);
+  const drop  = document.getElementById('ac-' + id);
+  if (!input || !drop) return;
+
+  const q = input.value.trim().toLowerCase();
+  const suggestions = buildStudentSuggestions();
+  const filtered = q
+    ? suggestions.filter(s => s.name.toLowerCase().includes(q) || s.key.toLowerCase().includes(q))
+    : suggestions;
+
+  if (!filtered.length) { drop.classList.remove('open'); return; }
+
+  acActiveIdx[id] = -1;
+  drop.innerHTML = filtered.slice(0, 10).map((s, i) =>
+    `<div class="ac-item" data-idx="${i}" data-key="${s.key}" data-prefix="${s.prefix}"
+        onmousedown="selectStudentAC(${id}, '${s.key.replace(/'/g,"\'")}', '${s.prefix.replace(/'/g,"\'")}')">
+      <span class="ac-prefix">${s.prefix}</span>
+      <span>${highlightMatch(s.name, q)}</span>
+      <span class="ac-count">${s.count} วิชา</span>
+    </div>`
+  ).join('');
+  drop.classList.add('open');
+}
+
+function selectStudentAC(id, name, prefix) {
+  const input  = document.getElementById('name-' + id);
+  const preEl  = document.getElementById('pre-' + id);
+  const drop   = document.getElementById('ac-' + id);
+  if (input) input.value = name;
+  if (preEl && prefix) {
+    // map normalized prefix → select option value
+    const prefMap = { 'เด็กชาย': 'เด็กชาย', 'เด็กหญิง': 'เด็กหญิง', 'นาย': 'นาย', 'นางสาว': 'นางสาว', 'นาง': 'นางสาว' };
+    const opt = prefMap[prefix] || prefix;
+    if ([...preEl.options].some(o => o.value === opt)) preEl.value = opt;
+  }
+  if (drop) drop.classList.remove('open');
+}
+
+function closeStudentAC(id) {
+  document.getElementById('ac-' + id)?.classList.remove('open');
+}
+
+function studentACKey(e, id) {
+  const drop = document.getElementById('ac-' + id);
+  if (!drop || !drop.classList.contains('open')) return;
+  const items = drop.querySelectorAll('.ac-item');
+  if (!items.length) return;
+  const cur = acActiveIdx[id] ?? -1;
+
+  if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    acActiveIdx[id] = Math.min(cur + 1, items.length - 1);
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    acActiveIdx[id] = Math.max(cur - 1, -1);
+  } else if (e.key === 'Enter' || e.key === 'Tab') {
+    if (cur >= 0 && items[cur]) {
+      e.preventDefault();
+      const item = items[cur];
+      selectStudentAC(id, item.dataset.key, item.dataset.prefix);
+      return;
+    }
+    drop.classList.remove('open');
+    return;
+  } else if (e.key === 'Escape') {
+    drop.classList.remove('open'); return;
+  }
+
+  // update active highlight
+  items.forEach((el, i) => el.classList.toggle('active', i === acActiveIdx[id]));
+  if (acActiveIdx[id] >= 0) items[acActiveIdx[id]]?.scrollIntoView({ block: 'nearest' });
+}
+
+// ── TEACHER AUTOCOMPLETE ──
+let teacherACActiveIdx = -1;
+
+function teacherAC() {
+  const input  = document.getElementById('f-teacher-fname');
+  const lname  = document.getElementById('f-teacher-lname');
+  const prefix = document.getElementById('f-teacher-prefix');
+  const drop   = document.getElementById('teacher-ac-dropdown');
+  if (!input || !drop) return;
+
+  const q = input.value.trim().toLowerCase();
+  const suggestions = buildTeacherSuggestions();
+  const filtered = q
+    ? suggestions.filter(s => s.name.toLowerCase().includes(q))
+    : suggestions;
+
+  if (!filtered.length) { drop.classList.remove('open'); return; }
+
+  teacherACActiveIdx = -1;
+  drop.innerHTML = filtered.slice(0, 8).map((s, i) => {
+    // แยกคำนำหน้าออกจาก teacher full name
+    const prefixes = ['นางสาว', 'นาง', 'นาย'];
+    let displayPre = '', displayName = s.name;
+    for (const p of prefixes) {
+      if (s.name.startsWith(p)) { displayPre = p; displayName = s.name.slice(p.length).trim(); break; }
+    }
+    const parts = displayName.split(' ');
+    const fname = parts[0] || '';
+    const lnamePart = parts.slice(1).join(' ');
+    return `<div class="ac-item" data-idx="${i}" data-full="${s.name.replace(/"/g,'&quot;')}"
+        data-pre="${displayPre}" data-fname="${fname}" data-lname="${lnamePart}"
+        onmousedown="selectTeacherAC('${s.name.replace(/'/g,"\'")}')">
+      <span class="ac-prefix">${displayPre || ''}</span>
+      <span>${highlightMatch(displayName, q)}</span>
+      <span class="ac-count">${s.count} รายวิชา</span>
+    </div>`;
+  }).join('');
+  drop.classList.add('open');
+}
+
+function selectTeacherAC(fullName) {
+  const prefixes = ['นางสาว', 'นาง', 'นาย'];
+  let pre = 'นาย', rest = fullName;
+  for (const p of prefixes) {
+    if (fullName.startsWith(p)) { pre = p; rest = fullName.slice(p.length).trim(); break; }
+  }
+  const parts = rest.split(' ');
+  const preEl = document.getElementById('f-teacher-prefix');
+  const fnEl  = document.getElementById('f-teacher-fname');
+  const lnEl  = document.getElementById('f-teacher-lname');
+  const drop  = document.getElementById('teacher-ac-dropdown');
+  if (preEl) preEl.value = pre;
+  if (fnEl)  fnEl.value  = parts[0] || '';
+  if (lnEl)  lnEl.value  = parts.slice(1).join(' ') || '';
+  if (drop)  drop.classList.remove('open');
+}
+
+function closeTeacherAC() {
+  document.getElementById('teacher-ac-dropdown')?.classList.remove('open');
+}
+
+function teacherACKey(e) {
+  const drop = document.getElementById('teacher-ac-dropdown');
+  if (!drop || !drop.classList.contains('open')) return;
+  const items = drop.querySelectorAll('.ac-item');
+  if (!items.length) return;
+
+  if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    teacherACActiveIdx = Math.min(teacherACActiveIdx + 1, items.length - 1);
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    teacherACActiveIdx = Math.max(teacherACActiveIdx - 1, -1);
+  } else if (e.key === 'Enter' || e.key === 'Tab') {
+    if (teacherACActiveIdx >= 0 && items[teacherACActiveIdx]) {
+      e.preventDefault();
+      selectTeacherAC(items[teacherACActiveIdx].dataset.full);
+      return;
+    }
+    drop.classList.remove('open'); return;
+  } else if (e.key === 'Escape') {
+    drop.classList.remove('open'); return;
+  }
+
+  items.forEach((el, i) => el.classList.toggle('active', i === teacherACActiveIdx));
+  if (teacherACActiveIdx >= 0) items[teacherACActiveIdx]?.scrollIntoView({ block: 'nearest' });
+}
+
+// Close all dropdowns when clicking outside
+document.addEventListener('mousedown', (e) => {
+  if (!e.target.closest('.ac-wrap') && !e.target.closest('#teacher-ac-dropdown')) {
+    document.querySelectorAll('.ac-dropdown.open').forEach(d => d.classList.remove('open'));
+  }
+});
 
 // ============================================================
 // START
